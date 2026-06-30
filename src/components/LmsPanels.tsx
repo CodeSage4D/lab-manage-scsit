@@ -360,7 +360,7 @@ export default function LmsPanels({
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [stagingRecords, setStagingRecords] = useState<any[]>([]);
-  const [stagingLabId, setStagingLabId] = useState("");
+  const [stagingLabId, setStagingLabId] = useState(laboratories[0]?.id?.toString() || "");
   const [newEntry, setNewEntry] = useState({
     pc_number: "", system_make: "", system_model: "", serial_number: "",
     date: new Date().toISOString().split("T")[0],
@@ -1681,23 +1681,8 @@ export default function LmsPanels({
 
       {/* 5. Maintenance Register Panel (Module 4) — Enhanced */}
       {activeTab === "maintenance_register" && (() => {
-        /* ── Local filter/search state via useMemo derived values ── */
-        const [maintSearch, setMaintSearch] = React.useState("");
-        const [maintDateFilter, setMaintDateFilter] = React.useState("");
-        const [maintPeriod, setMaintPeriod] = React.useState("All"); // All | Week | Month | Year
-        const [maintTechFilter, setMaintTechFilter] = React.useState("All");
-        const [maintMakeFilter, setMaintMakeFilter] = React.useState("All");
-        const [showBulkModal, setShowBulkModal] = React.useState(false);
-        const [showConfirmModal, setShowConfirmModal] = React.useState(false);
-        const [stagingRecords, setStagingRecords] = React.useState<any[]>([]);
-        const [stagingLabId, setStagingLabId] = React.useState(laboratories[0]?.id?.toString() || "");
-        const [newEntry, setNewEntry] = React.useState({
-          pc_number: "", system_make: "", system_model: "", serial_number: "",
-          date: new Date().toISOString().split("T")[0],
-          time_stamp: new Date().toTimeString().slice(0, 5),
-          issue_description: "", reason_for_damage: "",
-          action_taken: "", technician_name: "", status: "Pending", completion_date: "", remarks: ""
-        });
+        /* Use top-level component hooks directly to adhere to the Rules of Hooks */
+
 
         /* Unique values for filter dropdowns */
         const uniqueTechs = Array.from(new Set(maintenanceLogs.map(m => m.technician_name).filter(Boolean)));
