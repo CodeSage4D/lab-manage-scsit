@@ -8,8 +8,10 @@ import {
   User, Database, Server, RefreshCw, BarChart3, ChevronDown,
   ChevronUp, Sun, Moon, ShieldCheck, LogOut, ShieldAlert,
   KeyRound, Filter, X, FileSpreadsheet, FileText, CheckCircle2,
-  Edit, Plus, ToggleLeft, ToggleRight, Phone, Mail, Image as ImageIcon, Check, Sparkles, Save
+  Edit, Plus, ToggleLeft, ToggleRight, Phone, Mail, Image as ImageIcon, Check, Sparkles, Save,
+  Lock, Unlock, Bell, Activity, Layers, FileCode, History, Settings
 } from "lucide-react";
+import LmsPanels from "../../components/LmsPanels";
 import {
   getSubmissions,
   deleteSubmission,
@@ -19,7 +21,35 @@ import {
   getAdmins,
   saveAdmin,
   deleteAdmin,
-  adminCreateSubmission
+  adminCreateSubmission,
+  getDepartmentDetails,
+  updateDepartmentDetails,
+  getLaboratories,
+  saveLaboratory,
+  deleteLaboratory,
+  getLabSoftwares,
+  saveLabSoftware,
+  deleteLabSoftware,
+  getMaintenanceLogs,
+  saveMaintenanceLog,
+  deleteMaintenanceLog,
+  getInventory,
+  saveInventoryItem,
+  deleteInventoryItem,
+  getAssetLifecycle,
+  saveAssetLifecycle,
+  deleteAssetLifecycle,
+  getNaacDocs,
+  saveNaacDoc,
+  deleteNaacDoc,
+  getIeeeCompliance,
+  saveIeeeCompliance,
+  deleteIeeeCompliance,
+  getDocumentRepo,
+  saveDocument,
+  deleteDocument,
+  getAuditLogs,
+  clearAuditLogs
 } from "../actions";
 
 /* ── Type definitions ─────────────────────────────────────────────────────── */
@@ -70,6 +100,154 @@ interface AdminUser {
   profile_photo?: string;
 }
 
+interface DepartmentDetails {
+  id: number;
+  department_name: string;
+  academic_year: string;
+  coordinator_name: string;
+  lab_coordinator_name: string;
+  total_labs: number;
+}
+
+interface Laboratory {
+  id?: number;
+  name: string;
+  code: string;
+  building: string;
+  floor: string;
+  location: string;
+  seating_capacity: number;
+  total_computers: number;
+  operating_system: string;
+  primary_purpose: string;
+  lab_in_charge: string;
+  lab_assistant: string;
+  status: "Active" | "Under Maintenance" | "Closed";
+  created_at?: string;
+}
+
+interface LabSoftware {
+  id?: number;
+  lab_id: number;
+  software_name: string;
+  version: string;
+  framework?: string;
+  framework_version?: string;
+  license_type: string;
+  installation_date: string;
+  last_updated_date: string;
+  installed_by: string;
+  axn_request_id?: string;
+  remarks?: string;
+  lab_name?: string;
+  lab_code?: string;
+}
+
+interface MaintenanceLog {
+  id?: number;
+  maintenance_id: string;
+  lab_id: number;
+  pc_number?: string;
+  system_make?: string;
+  system_model?: string;
+  serial_number?: string;
+  date: string;
+  time_stamp?: string;
+  issue_description: string;
+  reason_for_damage?: string;
+  action_taken?: string;
+  technician_name: string;
+  status: "Pending" | "In Progress" | "Completed";
+  completion_date?: string;
+  remarks?: string;
+  lab_name?: string;
+  lab_code?: string;
+}
+
+interface InventoryItem {
+  id?: number;
+  lab_id: number;
+  device_type: string;
+  asset_number: string;
+  cpu?: string;
+  ram?: string;
+  storage?: string;
+  monitor?: string;
+  printer_details?: string;
+  projector_details?: string;
+  ups_details?: string;
+  network_details?: string;
+  purchase_date: string;
+  warranty_details?: string;
+  vendor_details?: string;
+  status: string;
+  lab_name?: string;
+  lab_code?: string;
+}
+
+interface AssetLifecycleRecord {
+  id?: number;
+  inventory_id: number;
+  purchase_date: string;
+  warranty_expiry: string;
+  amc_details?: string;
+  last_maintenance?: string;
+  next_maintenance?: string;
+  current_condition: string;
+  replacement_recommendation?: string;
+  asset_number?: string;
+  device_type?: string;
+  warranty_details?: string;
+  lab_name?: string;
+}
+
+interface NaacDoc {
+  id?: number;
+  lab_id?: number;
+  document_type: string;
+  document_name: string;
+  file_url: string;
+  upload_date?: string;
+  uploaded_by?: string;
+  remarks?: string;
+  lab_name?: string;
+}
+
+interface IeeeComplianceRecord {
+  id?: number;
+  lab_id?: number;
+  compliance_type: string;
+  title: string;
+  content_text: string;
+  file_url?: string;
+  last_reviewed_date: string;
+  reviewed_by?: string;
+  status: string;
+  lab_name?: string;
+}
+
+interface DocumentRepoItem {
+  id?: number;
+  category: string;
+  document_name: string;
+  file_url: string;
+  associated_id?: string;
+  upload_date?: string;
+  uploaded_by?: string;
+  remarks?: string;
+}
+
+interface AuditLog {
+  id?: number;
+  username: string;
+  action_performed: string;
+  table_name: string;
+  record_id: string;
+  previous_value?: string;
+  updated_value?: string;
+  timestamp: string;
+}
+
 const LABS = ["Lab A","Lab B","Lab C","Lab D","Lab E","Lab F","Lab G","Lab H","Lab I"];
 const SEMESTERS = ["Semester I","Semester II","Semester III","Semester IV","Semester V","Semester VI","Semester VII","Semester VIII"];
 
@@ -116,8 +294,110 @@ export default function AdminDashboard() {
   /* New settings & NAAC Tab state variables */
   const [activeSession, setActiveSession] = useState("July-Dec 2026");
   const [noticeInput, setNoticeInput] = useState("");
-  const [activeTab, setActiveTab] = useState<"requests" | "naac">("requests");
+  const [activeTab, setActiveTab] = useState<string>("reports_dashboard");
   const [editingClasses, setEditingClasses] = useState<Record<string, ClassItem>>({});
+
+  /* Modular LMS Data States */
+  const [departmentDetails, setDepartmentDetails] = useState<DepartmentDetails | null>(null);
+  const [laboratories, setLaboratories] = useState<Laboratory[]>([]);
+  const [labSoftwares, setLabSoftwares] = useState<LabSoftware[]>([]);
+  const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [assetLifecycles, setAssetLifecycles] = useState<AssetLifecycleRecord[]>([]);
+  const [naacDocsList, setNaacDocsList] = useState<NaacDoc[]>([]);
+  const [ieeeRecords, setIeeeRecords] = useState<IeeeComplianceRecord[]>([]);
+  const [documentRepoList, setDocumentRepoList] = useState<DocumentRepoItem[]>([]);
+  const [auditLogsList, setAuditLogsList] = useState<AuditLog[]>([]);
+
+  /* Modules Status Tracker (computed from settings) */
+  const modulesStatus = useMemo(() => {
+    const status: Record<string, boolean> = {};
+    const lmsModules = [
+      "faculty_software_requests",
+      "laboratory_management",
+      "laboratory_software_records",
+      "maintenance_register",
+      "reports_dashboard",
+      "laboratory_inventory",
+      "asset_management",
+      "notifications",
+      "naac_documentation",
+      "ieee_compliance",
+      "document_repository",
+      "search_audit_logs"
+    ];
+    lmsModules.forEach(mod => {
+      const key = `module_${mod}`;
+      const isEnabledByDefault = [
+        "faculty_software_requests",
+        "laboratory_management",
+        "laboratory_software_records",
+        "maintenance_register",
+        "reports_dashboard"
+      ].includes(mod);
+      status[mod] = settings[key] !== undefined ? settings[key] === "true" : isEnabledByDefault;
+    });
+    return status;
+  }, [settings]);
+
+  /* Redirect if current tab gets disabled */
+  useEffect(() => {
+    if (activeTab !== "module_settings" && !modulesStatus[activeTab]) {
+      const lmsModules = [
+        "reports_dashboard",
+        "faculty_software_requests",
+        "laboratory_management",
+        "laboratory_software_records",
+        "maintenance_register",
+        "laboratory_inventory",
+        "asset_management",
+        "naac_documentation",
+        "ieee_compliance",
+        "document_repository",
+        "notifications",
+        "search_audit_logs"
+      ];
+      const firstEnabled = lmsModules.find(m => modulesStatus[m]);
+      if (firstEnabled) {
+        setActiveTab(firstEnabled);
+      } else {
+        setActiveTab("module_settings");
+      }
+    }
+  }, [activeTab, modulesStatus]);
+
+  /* Modals and editing states for Modules */
+  const [showLabModal, setShowLabModal] = useState(false);
+  const [editingLab, setEditingLab] = useState<Laboratory | null>(null);
+
+  const [showSoftwareModal, setShowSoftwareModal] = useState(false);
+  const [editingSoftware, setEditingSoftware] = useState<LabSoftware | null>(null);
+
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [editingMaintenance, setEditingMaintenance] = useState<MaintenanceLog | null>(null);
+
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [editingInventory, setEditingInventory] = useState<InventoryItem | null>(null);
+
+  const [showLifecycleModal, setShowLifecycleModal] = useState(false);
+  const [editingLifecycle, setEditingLifecycle] = useState<AssetLifecycleRecord | null>(null);
+
+  const [showNaacModal, setShowNaacModal] = useState(false);
+  const [naacLabId, setNaacLabId] = useState("");
+  const [naacDocType, setNaacDocType] = useState("Laboratory Utilization Reports");
+  const [naacDocName, setNaacDocName] = useState("");
+  const [naacFileBase64, setNaacFileBase64] = useState("");
+  const [naacRemarks, setNaacRemarks] = useState("");
+
+  const [showIeeeModal, setShowIeeeModal] = useState(false);
+  const [editingIeee, setEditingIeee] = useState<IeeeComplianceRecord | null>(null);
+
+  const [showDocRepoModal, setShowDocRepoModal] = useState(false);
+  const [repoCategory, setRepoCategory] = useState("Software Licenses");
+  const [repoDocName, setRepoDocName] = useState("");
+  const [repoFileBase64, setRepoFileBase64] = useState("");
+  const [repoAssociatedId, setRepoAssociatedId] = useState("");
+  const [repoRemarks, setRepoRemarks] = useState("");
 
   const handleToggleLabSelectionConfig = async () => {
     const nextVal = settings.faculty_lab_selection_enabled === "true" ? "false" : "true";
@@ -207,6 +487,57 @@ export default function AdminDashboard() {
       if (adminsRes.success && adminsRes.data) {
         setAdminsList(adminsRes.data as AdminUser[]);
       }
+
+      // Modular LMS Data Fetches
+      const deptRes = await getDepartmentDetails();
+      if (deptRes.success && deptRes.data) {
+        setDepartmentDetails(deptRes.data as DepartmentDetails);
+      }
+
+      const labsRes = await getLaboratories();
+      if (labsRes.success && labsRes.data) {
+        setLaboratories(labsRes.data as Laboratory[]);
+      }
+
+      const softRes = await getLabSoftwares();
+      if (softRes.success && softRes.data) {
+        setLabSoftwares(softRes.data as LabSoftware[]);
+      }
+
+      const maintRes = await getMaintenanceLogs();
+      if (maintRes.success && maintRes.data) {
+        setMaintenanceLogs(maintRes.data as MaintenanceLog[]);
+      }
+
+      const invRes = await getInventory();
+      if (invRes.success && invRes.data) {
+        setInventoryItems(invRes.data as InventoryItem[]);
+      }
+
+      const lifecycleRes = await getAssetLifecycle();
+      if (lifecycleRes.success && lifecycleRes.data) {
+        setAssetLifecycles(lifecycleRes.data as AssetLifecycleRecord[]);
+      }
+
+      const naacDocsRes = await getNaacDocs();
+      if (naacDocsRes.success && naacDocsRes.data) {
+        setNaacDocsList(naacDocsRes.data as NaacDoc[]);
+      }
+
+      const ieeeRes = await getIeeeCompliance();
+      if (ieeeRes.success && ieeeRes.data) {
+        setIeeeRecords(ieeeRes.data as IeeeComplianceRecord[]);
+      }
+
+      const docRepoRes = await getDocumentRepo();
+      if (docRepoRes.success && docRepoRes.data) {
+        setDocumentRepoList(docRepoRes.data as DocumentRepoItem[]);
+      }
+
+      const auditRes = await getAuditLogs();
+      if (auditRes.success && auditRes.data) {
+        setAuditLogsList(auditRes.data as AuditLog[]);
+      }
     } catch (e) {
       console.error(e);
       showToast("Error querying backend database.");
@@ -277,6 +608,350 @@ export default function AdminDashboard() {
       console.error(e);
       showToast("Error updating license type.");
     }
+  };
+
+  /* ========================================================================
+     MODULAR LMS frontend handlers
+     ======================================================================== */
+
+  const handleToggleModule = async (moduleId: string) => {
+    const key = `module_${moduleId}`;
+    const nextVal = modulesStatus[moduleId] ? "false" : "true";
+    try {
+      const res = await updateSetting(key, nextVal);
+      if (res.success) {
+        setSettings(prev => ({ ...prev, [key]: nextVal }));
+        showToast(`Module "${moduleId.replace(/_/g, ' ').toUpperCase()}" ${nextVal === "true" ? "ENABLED" : "LOCKED/DISABLED"}.`);
+      } else {
+        showToast("Failed to update module status.");
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Error updating module status.");
+    }
+  };
+
+  const handleSaveDepartmentDetails = async (e: React.FormEvent, deptData: any) => {
+    e.preventDefault();
+    try {
+      const res = await updateDepartmentDetails(deptData, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Department details updated successfully.");
+        fetchData();
+      } else {
+        alert("Failed to save department details: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveLab = async (e: React.FormEvent, labData: any) => {
+    e.preventDefault();
+    try {
+      const res = await saveLaboratory(labData, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast(`Laboratory ${labData.id ? "updated" : "created"} successfully.`);
+        setShowLabModal(false);
+        setEditingLab(null);
+        fetchData();
+      } else {
+        alert("Failed to save laboratory: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteLab = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this laboratory? All associated software, inventory, and maintenance records will be affected.")) return;
+    try {
+      const res = await deleteLaboratory(id, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Laboratory record deleted.");
+        fetchData();
+      } else {
+        alert("Failed to delete laboratory: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveSoftwareRecord = async (e: React.FormEvent, softData: any) => {
+    e.preventDefault();
+    try {
+      const res = await saveLabSoftware(softData, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Software installation record saved.");
+        setShowSoftwareModal(false);
+        setEditingSoftware(null);
+        fetchData();
+      } else {
+        alert("Failed to save software record: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteSoftwareRecord = async (id: number) => {
+    if (!confirm("Delete this software installation record?")) return;
+    try {
+      const res = await deleteLabSoftware(id, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Software installation record deleted.");
+        fetchData();
+      } else {
+        alert("Failed to delete record: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveMaintenanceRecord = async (e: React.FormEvent, maintData: any) => {
+    e.preventDefault();
+    try {
+      const res = await saveMaintenanceLog(maintData, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Maintenance record saved.");
+        setShowMaintenanceModal(false);
+        setEditingMaintenance(null);
+        fetchData();
+      } else {
+        alert("Failed to save maintenance record: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteMaintenanceRecord = async (id: number) => {
+    if (!confirm("Delete this maintenance record?")) return;
+    try {
+      const res = await deleteMaintenanceLog(id, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Maintenance record deleted.");
+        fetchData();
+      } else {
+        alert("Failed to delete record: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveInventoryRecord = async (e: React.FormEvent, invData: any) => {
+    e.preventDefault();
+    try {
+      const res = await saveInventoryItem(invData, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Inventory item saved successfully.");
+        setShowInventoryModal(false);
+        setEditingInventory(null);
+        fetchData();
+      } else {
+        alert("Failed to save inventory item: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteInventoryRecord = async (id: number) => {
+    if (!confirm("Delete this inventory item?")) return;
+    try {
+      const res = await deleteInventoryItem(id, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Inventory item deleted.");
+        fetchData();
+      } else {
+        alert("Failed to delete item: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveAssetLifecycleRecord = async (e: React.FormEvent, lifeData: any) => {
+    e.preventDefault();
+    try {
+      const res = await saveAssetLifecycle(lifeData, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Asset lifecycle record saved.");
+        setShowLifecycleModal(false);
+        setEditingLifecycle(null);
+        fetchData();
+      } else {
+        alert("Failed to save lifecycle details: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteAssetLifecycleRecord = async (id: number) => {
+    if (!confirm("Delete this asset lifecycle record?")) return;
+    try {
+      const res = await deleteAssetLifecycle(id, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Asset lifecycle record deleted.");
+        fetchData();
+      } else {
+        alert("Failed to delete record: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUploadNaacDoc = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!naacDocName.trim()) { alert("Document Name is required."); return; }
+    if (!naacFileBase64) { alert("Please select a file to upload."); return; }
+    try {
+      const payload = {
+        lab_id: naacLabId ? parseInt(naacLabId) : null,
+        document_type: naacDocType,
+        document_name: naacDocName.trim(),
+        file_url: naacFileBase64,
+        remarks: naacRemarks
+      };
+      const res = await saveNaacDoc(payload, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("NAAC Document uploaded successfully.");
+        setShowNaacModal(false);
+        setNaacDocName("");
+        setNaacRemarks("");
+        setNaacFileBase64("");
+        fetchData();
+      } else {
+        alert("Upload failed: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteNaacDoc = async (id: number) => {
+    if (!confirm("Permanently delete this NAAC document?")) return;
+    try {
+      const res = await deleteNaacDoc(id, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("NAAC Document deleted.");
+        fetchData();
+      } else {
+        alert("Delete failed: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveIeeeComplianceRecord = async (e: React.FormEvent, ieeeData: any) => {
+    e.preventDefault();
+    try {
+      const res = await saveIeeeCompliance(ieeeData, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("IEEE compliance record saved.");
+        setShowIeeeModal(false);
+        setEditingIeee(null);
+        fetchData();
+      } else {
+        alert("Failed to save IEEE compliance record: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteIeeeComplianceRecord = async (id: number) => {
+    if (!confirm("Delete this IEEE compliance record?")) return;
+    try {
+      const res = await deleteIeeeCompliance(id, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("IEEE compliance record deleted.");
+        fetchData();
+      } else {
+        alert("Failed to delete record: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUploadRepoDoc = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!repoDocName.trim()) { alert("Document Name is required."); return; }
+    if (!repoFileBase64) { alert("Please select a file to upload."); return; }
+    try {
+      const payload = {
+        category: repoCategory,
+        document_name: repoDocName.trim(),
+        file_url: repoFileBase64,
+        associated_id: repoAssociatedId || null,
+        remarks: repoRemarks
+      };
+      const res = await saveDocument(payload, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Document saved to repository.");
+        setShowDocRepoModal(false);
+        setRepoDocName("");
+        setRepoFileBase64("");
+        setRepoAssociatedId("");
+        setRepoRemarks("");
+        fetchData();
+      } else {
+        alert("Upload failed: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteRepoDoc = async (id: number) => {
+    if (!confirm("Permanently delete this document from repository?")) return;
+    try {
+      const res = await deleteDocument(id, activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("Document deleted from repository.");
+        fetchData();
+      } else {
+        alert("Delete failed: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    if (!isSuperAdmin) {
+      alert("Access Denied: Only Director Admin can clear audit logs.");
+      return;
+    }
+    if (!confirm("Permanently clear all system audit logs?")) return;
+    try {
+      const res = await clearAuditLogs(activeAdmin?.name || "Admin");
+      if (res.success) {
+        showToast("All system audit logs cleared.");
+        fetchData();
+      } else {
+        alert("Clear failed: " + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setter(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   useEffect(() => {
@@ -965,7 +1640,7 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Workspace */}
-      <div className="flex-1 max-w-7xl mx-auto w-full px-4 md:px-8 py-8 space-y-8">
+      <div className="flex-1 max-w-7xl mx-auto w-full px-4 md:px-8 py-8">
         
         {/* Toast alerts */}
         <AnimatePresence>
@@ -982,1005 +1657,374 @@ export default function AdminDashboard() {
           )}
         </AnimatePresence>
 
-        {/* System Settings & Installation status Config Controls */}
-        <section className="glass-card p-5 border border-slate-200/50 dark:border-zinc-800/50 space-y-4 no-print shadow-sm animate-float-up">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-slate-100 dark:border-zinc-850">
-            <div className="space-y-1">
-              <h3 className="text-sm font-black text-slate-800 dark:text-white flex items-center gap-2">
-                <KeyRound size={15} className="text-suas-ruby" /> Portal Configuration Settings
-              </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Manage Faculty Portal features, status tracking widgets, scrolling notices, and active academic sessions.
-              </p>
-            </div>
-            <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-350">
-                Faculty Status Tracking Widget:
-              </span>
-              <button
-                onClick={handleToggleTrackingConfig}
-                className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition duration-200"
-                title={settings.installation_status_enabled === "true" ? "Disable Tracking" : "Enable Tracking"}
-              >
-                {settings.installation_status_enabled === "true" ? (
-                  <ToggleRight size={38} className="text-suas-ruby-neon" />
-                ) : (
-                  <ToggleLeft size={38} className="text-slate-400 dark:text-zinc-700" />
-                )}
-              </button>
-            </div>
-            <div className="flex items-center gap-3 shrink-0 self-end md:self-auto border-l border-slate-200/50 dark:border-zinc-800/50 pl-3">
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-350">
-                Faculty Lab Selection:
-              </span>
-              <button
-                onClick={handleToggleLabSelectionConfig}
-                className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition duration-200"
-                title={settings.faculty_lab_selection_enabled === "true" ? "Disable Lab Selection" : "Enable Lab Selection"}
-              >
-                {settings.faculty_lab_selection_enabled === "true" ? (
-                  <ToggleRight size={38} className="text-suas-ruby-neon" />
-                ) : (
-                  <ToggleLeft size={38} className="text-slate-400 dark:text-zinc-700" />
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Announcement notice editor */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-            <div className="md:col-span-1 space-y-0.5">
-              <label className="text-xs font-black text-slate-700 dark:text-slate-300 block">Scrolling Notice Text</label>
-              <p className="text-[10px] text-slate-455">Displays on the Faculty Portal marquee.</p>
-            </div>
-            <div className="md:col-span-3 flex gap-2 w-full">
-              <input
-                type="text"
-                placeholder="Notice: Enter scrolling notice here..."
-                value={noticeInput}
-                onChange={(e) => setNoticeInput(e.target.value)}
-                className="field-input text-xs flex-1"
-              />
-              <button
-                onClick={handleSaveNotice}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-black rounded-xl transition duration-200 shrink-0 shadow-sm"
-              >
-                Save Notice
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* ── TOP STAT CARDS ── */}
-        <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4 no-print">
-          {[
-            { icon: <Database size={16}/>, label:"Total Responses", val: loading?"…": submissions.length },
-            { icon: <User size={16}/>,     label:"Total Faculty",   val: loading?"…": uniqueFaculty.length },
-            { icon: <BookOpen size={16}/>, label:"Total Classes",  val: loading?"…": totalClassesCount },
-            { icon: <Server size={16}/>,   label:"Labs Utilised",   val: loading?"…": Object.keys(labCounts).length },
-            { icon: <BarChart3 size={16}/>,label:"Software Presets",val: loading?"…": uniqueSoftwares.length },
-          ].map((item, idx) => (
-            <div key={idx} className="glass-card p-4 flex items-center gap-3 bg-white/70 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850/60 shadow-sm hover-3d">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-rose-50 dark:bg-rose-950/20 text-suas-ruby">
-                {item.icon}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">{item.label}</p>
-                <p className="font-black text-slate-800 dark:text-white mt-0.5 text-lg leading-none">{item.val}</p>
-              </div>
-            </div>
-          ))}
-        </section>
-
-        {/* Main Section layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* Left / Center Submissions section */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Tab navigation for Requests vs NAAC reports */}
-            <div className="flex gap-2 border-b border-slate-200 dark:border-zinc-800 pb-2 no-print">
-              <button
-                onClick={() => setActiveTab("requests")}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition ${
-                  activeTab === "requests"
-                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:bg-slate-50 dark:hover:bg-zinc-900"
-                }`}
-              >
-                Faculty Class Requests
-              </button>
-              <button
-                onClick={() => setActiveTab("naac")}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition flex items-center gap-1.5 ${
-                  activeTab === "naac"
-                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:bg-slate-50 dark:hover:bg-zinc-900"
-                }`}
-              >
-                <ShieldCheck size={13} className="text-suas-ruby" />
-                NAAC Accreditation Audit Sheet
-              </button>
-            </div>
-
-            {activeTab === "requests" ? (
-              <>
-                {/* Sticky Filter controls */}
-                <div className="sticky top-[100px] z-30 no-print p-4 rounded-2xl bg-white/90 dark:bg-zinc-900/90 border border-slate-200/60 dark:border-zinc-800/60 shadow-md backdrop-blur-md space-y-3.5">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    placeholder="Search by faculty, subject name, code..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="field-input !pl-10 pr-9 py-2 text-xs"
-                  />
-                  <Search className="absolute left-3.5 top-[10px] text-suas-ruby dark:text-suas-ruby-neon shrink-0" size={14} />
-                  {searchQuery && (
-                    <button onClick={() => setSearchQuery("")} className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-655 transition">
-                      <X size={12} />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Collapsible Sidebar Navigation Panel */}
+          <aside className="lg:col-span-1 space-y-4 no-print text-left">
+            <div className="glass-card p-5 border border-slate-205 dark:border-zinc-800/80 bg-white/70 dark:bg-zinc-900/30">
+              <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">LMS System Modules</h3>
+              <nav className="space-y-1.5">
+                {[
+                  { id: "reports_dashboard", name: "Dashboard & Reports", icon: <BarChart3 size={15} /> },
+                  { id: "faculty_software_requests", name: "Faculty Requests", icon: <BookOpen size={15} /> },
+                  { id: "laboratory_management", name: "Department & Labs", icon: <Server size={15} /> },
+                  { id: "laboratory_software_records", name: "Software Records", icon: <FileCode size={15} /> },
+                  { id: "maintenance_register", name: "Maintenance Logs", icon: <Activity size={15} /> },
+                  { id: "laboratory_inventory", name: "Hardware Inventory", icon: <Layers size={15} /> },
+                  { id: "asset_management", name: "Asset Lifecycle", icon: <Calendar size={15} /> },
+                  { id: "naac_documentation", name: "NAAC Documentation", icon: <ShieldCheck size={15} /> },
+                  { id: "ieee_compliance", name: "IEEE Guidelines", icon: <FileText size={15} /> },
+                  { id: "document_repository", name: "Doc Repository", icon: <FileText size={15} /> },
+                  { id: "notifications", name: "System Alerts", icon: <Bell size={15} /> },
+                  { id: "search_audit_logs", name: "Search & Audit Logs", icon: <History size={15} /> }
+                ].map(item => {
+                  const isEnabled = modulesStatus[item.id];
+                  if (!isEnabled) return null; // Hide disabled modules
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 text-left cursor-pointer ${
+                        isActive
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow"
+                          : "text-slate-550 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-900"
+                      }`}
+                    >
+                      {item.icon}
+                      <span>{item.name}</span>
                     </button>
-                  )}
-                </div>
-
-                {activeFiltersCount > 0 && (
-                  <button
-                    onClick={clearFilters}
-                    className="flex items-center gap-1 px-3 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl bg-rose-50 dark:bg-rose-950/20 text-suas-ruby dark:text-suas-ruby-neon border border-rose-200 dark:border-rose-900/20 hover:bg-rose-100 transition shrink-0"
-                  >
-                    <Filter size={11} /> Clear ({activeFiltersCount})
-                  </button>
-                )}
-              </div>
-
-              {/* Advanced filter dropdown selectors */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                <div className="relative">
-                  <select value={filterFaculty} onChange={e => setFilterFaculty(e.target.value)} className={selectCls}>
-                    <option value="All">All Faculty</option>
-                    {uniqueFaculty.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
-                </div>
-
-                <div className="relative">
-                  <select value={filterSemester} onChange={e => setFilterSemester(e.target.value)} className={selectCls}>
-                    <option value="All">All Semesters</option>
-                    {SEMESTERS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
-                </div>
-
-                <div className="relative">
-                  <select value={filterLab} onChange={e => setFilterLab(e.target.value)} className={selectCls}>
-                    <option value="All">All Labs</option>
-                    {LABS.map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
-                </div>
-
-                <div className="relative">
-                  <select value={filterSoftware} onChange={e => setFilterSoftware(e.target.value)} className={selectCls}>
-                    <option value="All">All Software</option>
-                    {uniqueSoftwares.map(sw => <option key={sw} value={sw}>{sw}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
-                </div>
-
-                <div className="relative">
-                  <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} className={selectCls}>
-                    <option value="All">All Subjects</option>
-                    {uniqueSubjects.map(sub => <option key={sub} value={sub}>{sub}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-            </div>
-
-            {/* Submissions list table */}
-            <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950 shadow-sm overflow-hidden">
-              {loading ? (
-                <div className="py-20 text-center flex flex-col items-center gap-3 text-slate-400">
-                  <RefreshCw size={22} className="animate-spin text-suas-ruby" />
-                  <span className="text-xs font-bold">Querying PostgreSQL database...</span>
-                </div>
-              ) : filteredSubmissions.length === 0 ? (
-                <div className="py-16 text-center text-slate-400 italic text-xs font-medium">
-                  No submissions match the current filters.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-50/50 dark:bg-zinc-900/50 text-[9px] font-extrabold text-slate-450 dark:text-slate-550 uppercase tracking-widest border-b border-slate-200 dark:border-zinc-800">
-                        <th className="px-5 py-3">Submission ID</th>
-                        <th className="px-5 py-3">Faculty</th>
-                        <th className="px-5 py-3">Semester</th>
-                        <th className="px-5 py-3 text-center">Classes</th>
-                        <th className="px-5 py-3">Date</th>
-                        <th className="px-5 py-3 text-right no-print">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-850">
-                      {filteredSubmissions.map(sub => (
-                        <React.Fragment key={sub.id}>
-                          <tr className="hover:bg-slate-50/30 dark:hover:bg-zinc-900/10 transition">
-                            <td className="px-5 py-3.5 font-bold font-mono text-suas-ruby dark:text-suas-ruby-neon">
-                              <button
-                                onClick={() => setExpandedRow(expandedRow === sub.id ? null : sub.id)}
-                                className="flex items-center gap-1.5 text-left"
-                              >
-                                {expandedRow === sub.id ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
-                                {sub.submissionId}
-                              </button>
-                            </td>
-                            <td className="px-5 py-3.5">
-                              <p className="font-extrabold text-slate-800 dark:text-slate-200">{sub.facultyName}</p>
-                              <p className="text-[10px] text-slate-400 truncate max-w-[150px]">{sub.facultyEmail}</p>
-                            </td>
-                            <td className="px-5 py-3.5 font-semibold text-slate-655 dark:text-slate-400">{sub.semester}</td>
-                            <td className="px-5 py-3.5 text-center font-black text-slate-700 dark:text-slate-350">{sub.subjects.length}</td>
-                            <td className="px-5 py-3.5 text-slate-500">
-                              {new Date(sub.createdAt).toLocaleDateString("en-IN")}
-                            </td>
-                            <td className="px-5 py-3.5 text-right no-print">
-                              {isWriteAllowed ? (
-                                <button
-                                  onClick={() => handleDeleteSubmission(sub.id)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition"
-                                  title="Delete Record"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              ) : (
-                                <span className="text-[10px] text-slate-400 italic">Read-only</span>
-                              )}
-                            </td>
-                          </tr>
-
-                          {/* Expanded Row: shows individual classes status management */}
-                          <AnimatePresence>
-                            {expandedRow === sub.id && (
-                              <tr>
-                                <td colSpan={6} className="p-0">
-                                  <motion.div
-                                    initial={{ opacity: 0, height: 0 }}
-                                    animate={{ opacity: 1, height: "auto" }}
-                                    exit={{ opacity: 0, height: 0 }}
-                                    className="overflow-hidden bg-slate-50/30 dark:bg-zinc-950/25 px-5 py-4 space-y-4"
-                                  >
-                                    {/* Faculty Contact Details */}
-                                    <div className="flex flex-wrap justify-between items-center gap-2 pb-3 border-b border-slate-200/50 dark:border-zinc-800/50 text-[11px] font-semibold text-slate-550 dark:text-slate-450">
-                                      <p>Email: {sub.facultyEmail} | Phone: {sub.facultyMobile} | Dept: {sub.department}</p>
-                                      <p>Submitted: {new Date(sub.createdAt).toLocaleString("en-IN")}</p>
-                                    </div>
-
-                                    {/* Classes Status Controls */}
-                                    <div className="space-y-3">
-                                      <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Class Setup &amp; Status Management</p>
-                                      
-                                      {sub.subjects.map((c, idx) => {
-                                         const draftClass = editingClasses[c.id] || c;
-                                         return (
-                                           <div
-                                             key={c.id}
-                                             className="p-5 rounded-2xl bg-slate-50/50 dark:bg-zinc-900/30 border border-slate-200/60 dark:border-zinc-800/60 flex flex-col gap-4"
-                                           >
-                                             <div className="flex justify-between items-center border-b border-slate-200/50 dark:border-zinc-800/40 pb-2.5">
-                                               <div className="flex items-center gap-2">
-                                                 <span className="text-[10px] font-black bg-slate-200 dark:bg-zinc-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-350">
-                                                   Class #{idx + 1}
-                                                 </span>
-                                                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                                                   ID: <span className="font-mono text-[10px]">{c.id}</span>
-                                                 </span>
-                                               </div>
-                                               {editingClasses[c.id] && (
-                                                 <span className="text-[9px] font-black uppercase text-amber-500 tracking-wider flex items-center gap-1 animate-pulse">
-                                                   ⚠️ Unsaved Changes
-                                                 </span>
-                                               )}
-                                             </div>
-
-                                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                               {/* Subject Code */}
-                                               <div className="flex flex-col gap-1.5">
-                                                 <label className="text-[9px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-widest">
-                                                   Subject Code
-                                                 </label>
-                                                 <input
-                                                   type="text"
-                                                   disabled={!isWriteAllowed}
-                                                   value={draftClass.subjectCode}
-                                                   onChange={(e) => {
-                                                     setEditingClasses(prev => ({
-                                                       ...prev,
-                                                       [c.id]: { ...draftClass, subjectCode: e.target.value.toUpperCase() }
-                                                     }));
-                                                   }}
-                                                   className="px-3 py-2 text-xs rounded-xl outline-none bg-white dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 text-slate-800 dark:text-slate-200 font-bold"
-                                                 />
-                                               </div>
-
-                                               {/* Subject Name */}
-                                               <div className="flex flex-col gap-1.5">
-                                                 <label className="text-[9px] font-extrabold text-slate-450 dark:text-slate-500 uppercase tracking-widest">
-                                                   Subject Name
-                                                 </label>
-                                                 <input
-                                                   type="text"
-                                                   disabled={!isWriteAllowed}
-                                                   value={draftClass.subjectName}
-                                                   onChange={(e) => {
-                                                     setEditingClasses(prev => ({
-                                                       ...prev,
-                                                       [c.id]: { ...draftClass, subjectName: e.target.value }
-                                                     }));
-                                                   }}
-                                                   className="px-3 py-2 text-xs rounded-xl outline-none bg-white dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 text-slate-800 dark:text-slate-200 font-bold"
-                                                 />
-                                               </div>
-
-                                               {/* Lab Allocation */}
-                                               <div className="flex flex-col gap-1.5">
-                                                 <label className="text-[9px] font-extrabold text-slate-455 dark:text-slate-500 uppercase tracking-widest">
-                                                   Laboratory Allocation
-                                                 </label>
-                                                 <div className="relative">
-                                                   <select
-                                                     disabled={!isWriteAllowed}
-                                                     value={draftClass.labSelection || "null"}
-                                                     onChange={(e) => {
-                                                       const val = e.target.value === "null" ? null : e.target.value;
-                                                       setEditingClasses(prev => ({
-                                                         ...prev,
-                                                         [c.id]: { ...draftClass, labSelection: val }
-                                                       }));
-                                                     }}
-                                                     className="w-full px-3 py-2 text-xs rounded-xl border outline-none bg-white dark:bg-zinc-955 border-slate-200 dark:border-zinc-805 text-slate-800 dark:text-slate-200 appearance-none pr-8 font-bold"
-                                                   >
-                                                     <option value="null">⚠️ Pending Allocation (None)</option>
-                                                     {LABS.map(lab => (
-                                                       <option key={lab} value={lab}>💻 {lab}</option>
-                                                     ))}
-                                                   </select>
-                                                   <ChevronDown size={14} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
-                                                 </div>
-                                               </div>
-
-                                               {/* Status Selector */}
-                                               <div className="flex flex-col gap-1.5">
-                                                 <label className="text-[9px] font-extrabold text-slate-450 dark:text-slate-550 uppercase tracking-widest">
-                                                   Status
-                                                 </label>
-                                                 <div className="relative">
-                                                   <select
-                                                     disabled={!isWriteAllowed}
-                                                     value={draftClass.status}
-                                                     onChange={(e) => {
-                                                       setEditingClasses(prev => ({
-                                                         ...prev,
-                                                         [c.id]: { ...draftClass, status: e.target.value as any }
-                                                       }));
-                                                     }}
-                                                     className={`w-full px-3 py-2 text-xs font-bold rounded-xl border outline-none appearance-none cursor-pointer ${
-                                                       draftClass.status === "Installed" ? "neon-glow-green" : draftClass.status === "In Progress" ? "neon-glow-yellow" : "neon-glow-ruby"
-                                                     }`}
-                                                   >
-                                                     <option value="Pending">🔴 Pending</option>
-                                                     <option value="In Progress">🟡 In Progress</option>
-                                                     <option value="Installed">🟢 Installed</option>
-                                                   </select>
-                                                   <ChevronDown size={14} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
-                                                 </div>
-                                               </div>
-
-                                               {/* Remarks */}
-                                               <div className="flex flex-col gap-1.5 sm:col-span-2">
-                                                 <label className="text-[9px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-widest">
-                                                   Remarks / Notes
-                                                 </label>
-                                                 <input
-                                                   type="text"
-                                                   disabled={!isWriteAllowed}
-                                                   value={draftClass.remarks || ""}
-                                                   onChange={(e) => {
-                                                     setEditingClasses(prev => ({
-                                                       ...prev,
-                                                       [c.id]: { ...draftClass, remarks: e.target.value }
-                                                     }));
-                                                   }}
-                                                   placeholder="Remarks..."
-                                                   className="px-3 py-2 text-xs rounded-xl outline-none bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-800 dark:text-slate-200"
-                                                 />
-                                               </div>
-
-                                               {/* Software Requirements List & Inline Builder */}
-                                               <div className="flex flex-col gap-2.5 sm:col-span-3 p-4 rounded-xl bg-white dark:bg-zinc-955 border border-slate-205 dark:border-zinc-800/80 mt-2">
-                                                 <div className="flex justify-between items-center">
-                                                   <span className="text-[9px] font-extrabold text-slate-450 dark:text-slate-550 uppercase tracking-widest">
-                                                     Software Requirements List
-                                                   </span>
-                                                   <span className="text-[8px] font-bold text-slate-400">
-                                                     Total: {draftClass.softwares ? draftClass.softwares.length : 0}
-                                                   </span>
-                                                 </div>
-
-                                                 <div className="space-y-1.5">
-                                                   {draftClass.softwares && draftClass.softwares.length > 0 ? (
-                                                     <div className="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-                                                       <table className="w-full text-left border-collapse text-[11px]">
-                                                         <thead>
-                                                           <tr className="bg-slate-50 dark:bg-zinc-900/50 text-[9px] font-extrabold text-slate-450 uppercase tracking-wider border-b border-slate-200 dark:border-zinc-800">
-                                                             <th className="px-4 py-2">Semester</th>
-                                                             <th className="px-4 py-2">Software</th>
-                                                             <th className="px-4 py-2">Version</th>
-                                                             <th className="px-4 py-2">Framework / Stack</th>
-                                                             <th className="px-4 py-2 text-right">Actions</th>
-                                                           </tr>
-                                                         </thead>
-                                                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-850">
-                                                           {draftClass.softwares.map((s, sIdx) => {
-                                                             return (
-                                                               <tr key={s.id || sIdx} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/10 transition text-slate-750 dark:text-slate-300 font-bold">
-                                                                 <td className="px-4 py-2 text-suas-ruby dark:text-suas-ruby-neon">
-                                                                   <select
-                                                                     disabled={!isWriteAllowed}
-                                                                     value={s.semester}
-                                                                     onChange={(e) => {
-                                                                       const updatedSofts = draftClass.softwares.map(item =>
-                                                                         item.id === s.id ? { ...item, semester: e.target.value } : item
-                                                                       );
-                                                                       setEditingClasses(prev => ({
-                                                                         ...prev,
-                                                                         [c.id]: { ...draftClass, semesters: Array.from(new Set(updatedSofts.map(x => x.semester))), softwares: updatedSofts }
-                                                                       }));
-                                                                     }}
-                                                                     className="bg-transparent text-[11px] font-bold outline-none border border-transparent hover:border-slate-300 focus:border-slate-350 dark:hover:border-zinc-700 px-1 py-0.5 rounded cursor-pointer text-suas-ruby dark:text-suas-ruby-neon"
-                                                                   >
-                                                                     {SEMESTERS.map(sem => <option key={sem} value={sem}>{sem}</option>)}
-                                                                   </select>
-                                                                 </td>
-                                                                 <td className="px-4 py-2">
-                                                                   <input
-                                                                     type="text"
-                                                                     disabled={!isWriteAllowed}
-                                                                     value={s.softwareName}
-                                                                     onChange={(e) => {
-                                                                       const updatedSofts = draftClass.softwares.map(item =>
-                                                                         item.id === s.id ? { ...item, softwareName: e.target.value } : item
-                                                                       );
-                                                                       setEditingClasses(prev => ({
-                                                                         ...prev,
-                                                                         [c.id]: { ...draftClass, softwares: updatedSofts }
-                                                                       }));
-                                                                     }}
-                                                                     className="bg-transparent text-[11px] font-bold outline-none border border-transparent hover:border-slate-300 focus:border-slate-350 dark:hover:border-zinc-700 px-1 py-0.5 rounded w-full text-slate-900 dark:text-white"
-                                                                   />
-                                                                 </td>
-                                                                 <td className="px-4 py-2">
-                                                                   <input
-                                                                     type="text"
-                                                                     disabled={!isWriteAllowed}
-                                                                     value={s.version || ""}
-                                                                     onChange={(e) => {
-                                                                       const updatedSofts = draftClass.softwares.map(item =>
-                                                                         item.id === s.id ? { ...item, version: e.target.value } : item
-                                                                       );
-                                                                       setEditingClasses(prev => ({
-                                                                         ...prev,
-                                                                         [c.id]: { ...draftClass, softwares: updatedSofts }
-                                                                       }));
-                                                                     }}
-                                                                     className="bg-transparent text-[11px] font-mono outline-none border border-transparent hover:border-slate-300 focus:border-slate-350 dark:hover:border-zinc-700 px-1 py-0.5 rounded w-full text-slate-700 dark:text-slate-300"
-                                                                   />
-                                                                 </td>
-                                                                 <td className="px-4 py-2">
-                                                                   <input
-                                                                     type="text"
-                                                                     disabled={!isWriteAllowed}
-                                                                     value={s.framework || ""}
-                                                                     onChange={(e) => {
-                                                                       const updatedSofts = draftClass.softwares.map(item =>
-                                                                         item.id === s.id ? { ...item, framework: e.target.value } : item
-                                                                       );
-                                                                       setEditingClasses(prev => ({
-                                                                         ...prev,
-                                                                         [c.id]: { ...draftClass, softwares: updatedSofts }
-                                                                       }));
-                                                                     }}
-                                                                     className="bg-transparent text-[11px] outline-none border border-transparent hover:border-slate-300 focus:border-slate-350 dark:hover:border-zinc-700 px-1 py-0.5 rounded w-full text-slate-500"
-                                                                   />
-                                                                 </td>
-                                                                 <td className="px-4 py-2 text-right">
-                                                                   <button
-                                                                     type="button"
-                                                                     disabled={!isWriteAllowed}
-                                                                     onClick={() => {
-                                                                       const updatedSofts = draftClass.softwares.filter(item => item.id !== s.id);
-                                                                       setEditingClasses(prev => ({
-                                                                         ...prev,
-                                                                         [c.id]: { ...draftClass, semesters: Array.from(new Set(updatedSofts.map(x => x.semester))), softwares: updatedSofts }
-                                                                       }));
-                                                                     }}
-                                                                     className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-slate-105 dark:hover:bg-zinc-800 transition"
-                                                                   >
-                                                                     <X size={12} />
-                                                                   </button>
-                                                                 </td>
-                                                               </tr>
-                                                             );
-                                                           })}
-                                                         </tbody>
-                                                       </table>
-                                                     </div>
-                                                   ) : (
-                                                     <p className="text-[11px] text-slate-400 italic py-2 text-center bg-slate-50 dark:bg-zinc-900 rounded-lg">
-                                                       No software requirements added. Add a row below.
-                                                     </p>
-                                                   )}
-                                                 </div>
-
-                                                 {isWriteAllowed && (
-                                                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center mt-1 border-t border-slate-100 dark:border-zinc-850 pt-2.5">
-                                                     {/* New Row: Semester */}
-                                                     <div className="relative">
-                                                       <select
-                                                         id={`new-soft-sem-${c.id}`}
-                                                         className="w-full px-2 py-1 text-xs rounded bg-slate-50 dark:bg-zinc-900 border border-slate-205 dark:border-zinc-800 text-suas-ruby dark:text-suas-ruby-neon font-bold appearance-none pr-6"
-                                                       >
-                                                         {SEMESTERS.map(sem => <option key={sem} value={sem}>{sem}</option>)}
-                                                       </select>
-                                                       <ChevronDown size={12} className="absolute right-2 top-2 pointer-events-none text-slate-400" />
-                                                     </div>
-
-                                                     {/* New Row: Software Name */}
-                                                     <input
-                                                       type="text"
-                                                       id={`new-soft-name-${c.id}`}
-                                                       placeholder="Software Name"
-                                                       className="w-full px-2 py-1 text-xs rounded bg-slate-50 dark:bg-zinc-900 border border-slate-205 dark:border-zinc-800 text-slate-805 dark:text-slate-200"
-                                                     />
-
-                                                     {/* New Row: Version */}
-                                                     <input
-                                                       type="text"
-                                                       id={`new-soft-ver-${c.id}`}
-                                                       placeholder="Version"
-                                                       className="w-full px-2 py-1 text-xs rounded bg-slate-50 dark:bg-zinc-900 border border-slate-205 dark:border-zinc-805 text-slate-805 dark:text-slate-200"
-                                                     />
-
-                                                     {/* New Row: Stack / Framework */}
-                                                     <div className="flex gap-2">
-                                                       <input
-                                                         type="text"
-                                                         id={`new-soft-framework-${c.id}`}
-                                                         placeholder="Framework"
-                                                         className="w-full px-2 py-1 text-xs rounded bg-slate-50 dark:bg-zinc-900 border border-slate-205 dark:border-zinc-800 text-slate-805 dark:text-slate-200"
-                                                       />
-                                                       <button
-                                                         type="button"
-                                                         onClick={() => {
-                                                           const semSelect = document.getElementById(`new-soft-sem-${c.id}`) as HTMLSelectElement;
-                                                           const nameInput = document.getElementById(`new-soft-name-${c.id}`) as HTMLInputElement;
-                                                           const verInput = document.getElementById(`new-soft-ver-${c.id}`) as HTMLInputElement;
-                                                           const frameInput = document.getElementById(`new-soft-framework-${c.id}`) as HTMLInputElement;
-                                                           
-                                                           if (nameInput && nameInput.value.trim()) {
-                                                             const newSoft = {
-                                                               id: Math.random().toString(36).substring(2, 15),
-                                                               semester: semSelect.value,
-                                                               softwareName: nameInput.value.trim(),
-                                                               version: verInput.value.trim(),
-                                                               framework: frameInput.value.trim()
-                                                             };
-                                                             const currentSoftwares = draftClass.softwares || [];
-                                                             if (currentSoftwares.some(item => item.semester === newSoft.semester && item.softwareName.toLowerCase() === newSoft.softwareName.toLowerCase())) {
-                                                               showToast("Software already in list for this semester.");
-                                                               return;
-                                                             }
-                                                             const nextSoftwares = [...currentSoftwares, newSoft];
-                                                             setEditingClasses(prev => ({
-                                                               ...prev,
-                                                               [c.id]: {
-                                                                 ...draftClass,
-                                                                 semesters: Array.from(new Set(nextSoftwares.map(x => x.semester))),
-                                                                 softwares: nextSoftwares
-                                                               }
-                                                             }));
-                                                             nameInput.value = "";
-                                                             verInput.value = "";
-                                                             frameInput.value = "";
-                                                           }
-                                                         }}
-                                                         className="px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black uppercase rounded hover:bg-suas-ruby dark:hover:bg-suas-ruby-neon hover:text-white transition duration-200 shrink-0"
-                                                       >
-                                                         + Add
-                                                       </button>
-                                                     </div>
-                                                   </div>
-                                                 )}
-                                               </div>
-                                             </div>
-
-                                             {/* Actions: Save changes button */}
-                                             {isWriteAllowed && (
-                                               <div className="flex justify-end gap-2 border-t border-slate-100 dark:border-zinc-850/60 pt-2.5">
-                                                 {editingClasses[c.id] && (
-                                                   <button
-                                                     type="button"
-                                                     onClick={() => {
-                                                       setEditingClasses(prev => {
-                                                         const next = { ...prev };
-                                                         delete next[c.id];
-                                                         return next;
-                                                       });
-                                                     }}
-                                                     className="px-3 py-1.5 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-600 dark:text-slate-400 text-[10px] font-black rounded-lg transition"
-                                                   >
-                                                     Reset
-                                                   </button>
-                                                 )}
-                                                 <button
-                                                   type="button"
-                                                   onClick={() => handleUpdateClass(
-                                                     sub.id,
-                                                     c.id,
-                                                     draftClass.status,
-                                                     draftClass.remarks,
-                                                     draftClass.licenseType,
-                                                     draftClass.labSelection,
-                                                     draftClass.subjectCode,
-                                                     draftClass.subjectName,
-                                                     draftClass.framework || draftClass.softwares[0]?.framework || "",
-                                                     draftClass.semesters || Array.from(new Set(draftClass.softwares.map(x => x.semester))),
-                                                     draftClass.softwares
-                                                   )}
-                                                   className="px-4 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-suas-ruby dark:hover:bg-suas-ruby-neon hover:text-white text-[10px] font-black rounded-lg transition flex items-center gap-1 shadow-sm"
-                                                 >
-                                                   <Save size={12} /> Save Changes
-                                                 </button>
-                                               </div>
-                                             )}
-                                           </div>
-                                         );
-                                       })}
-
-                                    </div>
-
-                                    {/* Signature Verification visual */}
-                                    {sub.signatureData && (
-                                      <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-zinc-850/60">
-                                        <div className="text-center">
-                                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Faculty Verification Signature</p>
-                                          <div className="bg-white border border-slate-200 rounded-xl p-1.5 inline-block shadow-sm">
-                                            <img src={sub.signatureData} alt="Sig" className="h-8 w-auto max-w-[140px] object-contain" />
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </motion.div>
-                                </td>
-                              </tr>
-                            )}
-                          </AnimatePresence>
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="space-y-6">
-            
-            {/* NAAC Header Information Block (visible in print mode) */}
-            <div className="hidden print-only block p-6 border-b-2 border-slate-900 text-center mb-6">
-              <h1 className="text-xl font-bold tracking-tight uppercase">SYMBIOSIS UNIVERSITY OF APPLIED SCIENCES, INDORE</h1>
-              <h2 className="text-sm font-semibold tracking-wider uppercase mt-1">School of Computer Science and Information Technology (SCSIT)</h2>
-              <h3 className="text-xs font-semibold uppercase tracking-wider mt-1 text-slate-500">Laboratory Software Installation &amp; Utilization Audit Report (NAAC Criteria 4.3.1)</h3>
-              <div className="flex justify-between text-[11px] font-bold mt-4 pt-2 border-t border-slate-200">
-                <span>Academic Session: {settings.active_session || "July-Dec 2026"}</span>
-                <span>Report Generation Date: {new Date().toLocaleDateString("en-IN")}</span>
-              </div>
-            </div>
-
-            {/* NAAC audit intro and filters */}
-            <div className="glass-card p-5 border border-slate-200/50 dark:border-zinc-800/50 space-y-4 shadow-sm no-print">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <h4 className="text-sm font-black text-slate-805 dark:text-white">NAAC Accreditation Resource Logging (Criteria 4.3.1)</h4>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    A flat audit ledger of all requested lab softwares, target labs, and digital signatures.
-                  </p>
-                </div>
+                  );
+                })}
+                
+                {/* Module Settings (always visible) */}
                 <button
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-gradient-to-r from-suas-ruby to-suas-ruby-neon text-white text-xs font-black uppercase tracking-wider rounded-xl hover:shadow-lg transition shrink-0"
+                  onClick={() => setActiveTab("module_settings")}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 mt-4 border border-dashed text-left cursor-pointer ${
+                    activeTab === "module_settings"
+                      ? "bg-slate-900 text-white border-transparent dark:bg-white dark:text-slate-900 shadow"
+                      : "text-slate-550 border-slate-200 dark:border-zinc-850 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-900"
+                  }`}
                 >
-                  Print official Report
+                  <Settings size={15} />
+                  <span>Module Settings</span>
                 </button>
-              </div>
-
-              {/* License and Lab Filtering */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <div className="relative">
-                  <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Filter by License Type</label>
-                  <select value={filterLicenseType} onChange={e => setFilterLicenseType(e.target.value)} className={selectCls}>
-                    <option value="All">All Licenses</option>
-                    <option value="FOSS/Open Source">FOSS / Open Source</option>
-                    <option value="Licensed/Proprietary">Licensed / Proprietary</option>
-                    <option value="Freeware">Freeware</option>
-                    <option value="Shareware/Academic">Shareware / Academic</option>
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-[23px] text-slate-400 pointer-events-none" />
-                </div>
-
-                <div className="relative">
-                  <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Filter by Lab Location</label>
-                  <select value={filterLab} onChange={e => setFilterLab(e.target.value)} className={selectCls}>
-                    <option value="All">All Labs</option>
-                    {LABS.map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-[23px] text-slate-400 pointer-events-none" />
-                </div>
-
-                <div className="relative">
-                  <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Filter by Semester</label>
-                  <select value={filterSemester} onChange={e => setFilterSemester(e.target.value)} className={selectCls}>
-                    <option value="All">All Semesters</option>
-                    {SEMESTERS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-[23px] text-slate-400 pointer-events-none" />
-                </div>
-              </div>
+              </nav>
             </div>
 
-            {/* Audit Table Sheet */}
-            <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden bg-white dark:bg-zinc-950 shadow-sm">
-              {filteredNaacRows.length === 0 ? (
-                <p className="py-12 text-center text-slate-400 italic text-xs font-semibold">No records match the active criteria.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-50/60 dark:bg-zinc-900/50 text-[9px] font-extrabold text-slate-455 dark:text-slate-550 uppercase tracking-widest border-b border-slate-200 dark:border-zinc-800">
-                        <th className="px-4 py-3 text-center">S.No</th>
-                        <th className="px-4 py-3">Location</th>
-                        <th className="px-4 py-3">Subject / Code</th>
-                        <th className="px-4 py-3">Software Requirement</th>
-                        <th className="px-4 py-3">License Type</th>
-                        <th className="px-4 py-3">Faculty / Sign Status</th>
-                        <th className="px-4 py-3 text-center">Audit Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-850">
-                      {filteredNaacRows.map((row, index) => {
-                        const c = row.classItem;
-                        const isInstalled = c.status === "Installed";
-                        const isInProgress = c.status === "In Progress";
-                        const statusClass = isInstalled ? "text-emerald-600 dark:text-emerald-400"
-                                            : isInProgress ? "text-amber-600 dark:text-amber-400"
-                                            : "text-rose-600 dark:text-rose-400";
-                        return (
-                          <tr key={index} className="hover:bg-slate-50/20 dark:hover:bg-zinc-900/15 transition">
-                            <td className="px-4 py-3 text-center font-bold text-slate-400">#{index + 1}</td>
-                            <td className="px-4 py-3 font-extrabold text-slate-700 dark:text-slate-350">{c.labSelection}</td>
-                            <td className="px-4 py-3">
-                              <p className="font-bold text-slate-800 dark:text-slate-200">{c.subjectName}</p>
-                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">{c.subjectCode}</p>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="font-bold text-slate-805 dark:text-slate-200">{c.softwareName}</span>
-                              <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-mono rounded bg-slate-100 dark:bg-zinc-800 text-slate-500">v{c.softwareVersion}</span>
-                              {c.framework && <p className="text-[9px] text-slate-400 mt-0.5">Stack: {c.framework}</p>}
-                            </td>
-                            <td className="px-4 py-3">
-                              {/* License type selector (editable by admin inline, hidden on print for clean look) */}
-                              <div className="relative no-print">
-                                <select
-                                  value={c.licenseType || "FOSS/Open Source"}
-                                  disabled={!isWriteAllowed}
-                                  onChange={(e) => handleUpdateLicenseType(row.dbId, c.id, c.status, c.remarks, e.target.value)}
-                                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 text-slate-750 dark:text-slate-300 outline-none cursor-pointer pr-6"
-                                >
-                                  <option value="FOSS/Open Source">FOSS/Open Source</option>
-                                  <option value="Licensed/Proprietary">Licensed/Proprietary</option>
-                                  <option value="Freeware">Freeware</option>
-                                  <option value="Shareware/Academic">Shareware/Academic</option>
-                                </select>
-                              </div>
-                              {/* Plain text shown for print mode only */}
-                              <span className="hidden print-only font-bold text-slate-700">{c.licenseType || "FOSS/Open Source"}</span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <p className="font-semibold text-slate-750 dark:text-slate-350">{row.facultyName}</p>
-                              <span className="text-[9px] text-emerald-600 dark:text-emerald-455 font-extrabold flex items-center gap-0.5 mt-0.5">
-                                Verified Signature ✅
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`font-black uppercase tracking-wider text-[10px] ${statusClass}`}>
-                                {c.status}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+            {/* Quick stats on sidebar */}
+            {activeTab !== "reports_dashboard" && (
+              <div className="glass-card p-5 border border-slate-200/50 dark:border-zinc-800/50 bg-white/70 dark:bg-zinc-900/30 text-xs space-y-3 hidden lg:block">
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Quick Summary</span>
+                <div className="space-y-2 font-bold">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Active Labs:</span>
+                    <span className="text-suas-ruby">{laboratories.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Softwares:</span>
+                    <span className="text-slate-800 dark:text-white">{labSoftwares.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Open Complaints:</span>
+                    <span className="text-amber-500">{maintenanceLogs.filter(x => x.status !== "Completed").length}</span>
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {/* Print Signatures (visible only on print mode) */}
-            <div className="hidden print-only grid grid-cols-2 gap-12 mt-16 text-center text-xs font-bold font-sans">
-              <div className="space-y-12">
-                <div className="h-10 border-b border-slate-400 w-48 mx-auto" />
-                <p>IT Lab Coordinator / Technician</p>
-                <p className="text-[10px] text-slate-400 font-normal mt-0.5">SCSIT Laboratory Infrastructure Committee</p>
-              </div>
-              <div className="space-y-12">
-                <div className="h-10 border-b border-slate-400 w-48 mx-auto" />
-                <p>Director / Head of SCSIT</p>
-                <p className="text-[10px] text-slate-400 font-normal mt-0.5">Symbiosis University of Applied Sciences</p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-          {/* Right sidebar column for export center, admins account, analytics */}
-          <div className="space-y-6 no-print">
-            
-            {/* Create Manual Request Action */}
-            {isWriteAllowed && (
-              <div className="glass-card p-5 bg-white/70 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850/60 shadow-sm space-y-4">
-                <h3 className="text-xs font-black text-slate-705 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                  <Plus size={14} className="text-suas-ruby" /> Actions
-                </h3>
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 dark:bg-white hover:bg-suas-ruby dark:hover:bg-suas-ruby-neon hover:text-white text-white dark:text-slate-900 text-xs font-extrabold rounded-xl shadow-md transition duration-200 cursor-pointer"
-                >
-                  <Plus size={13} /> Create Manual Request
-                </button>
               </div>
             )}
+          </aside>
 
-            {/* Export Center */}
-            <div className="glass-card p-5 bg-white/70 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850/60 shadow-sm space-y-4">
-              <h3 className="text-xs font-black text-slate-705 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                <Download size={14} className="text-suas-ruby" /> Export Center
-              </h3>
-              <div className="grid gap-2">
-                <button
-                  onClick={() => exportCSV(filteredSubmissions, "SCSIT_All_Requirements")}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-50 dark:bg-zinc-950 hover:bg-slate-100 dark:hover:bg-zinc-850 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl border border-slate-200/60 dark:border-zinc-800 transition cursor-pointer"
-                >
-                  <FileSpreadsheet size={13} /> Export filtered CSV
-                </button>
-                <button
-                  onClick={() => exportCSV(submissions, "SCSIT_Complete_Database")}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-50/50 dark:bg-rose-950/10 hover:bg-rose-100/60 dark:hover:bg-rose-900/20 text-suas-ruby dark:text-suas-ruby-neon text-xs font-extrabold rounded-xl border border-rose-250/20 dark:border-rose-900/20 transition cursor-pointer"
-                >
-                  <FileSpreadsheet size={13} /> Export all data (CSV)
-                </button>
-              </div>
-            </div>
+          {/* Main Action Work Area Content */}
+          <main className="lg:col-span-3">
+            {activeTab === "module_settings" ? (
+              /* System and Module management panel */
+              <div className="space-y-6 animate-float-up text-left">
+                {/* Title */}
+                <div>
+                  <h3 className="text-sm font-black text-slate-855 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                    <Settings size={15} className="text-suas-ruby" /> LMS Module Settings &amp; Management
+                  </h3>
+                  <p className="text-[10px] text-slate-455 font-medium">Configure active laboratory modules, general department configurations, scrolling announcements, and administrators.</p>
+                </div>
 
-            {/* Admin accounts manager listing */}
-            <div className="glass-card p-5 bg-white/70 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850/60 shadow-sm space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xs font-black text-slate-705 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                  <ShieldCheck size={14} className="text-suas-ruby" /> Administrator Profiles
-                </h3>
-                {isSuperAdmin && (
-                  <button
-                    onClick={() => handleOpenAdminModal("add")}
-                    className="p-1 rounded-lg text-suas-ruby hover:bg-rose-50 dark:hover:bg-zinc-800 transition"
-                    title="Add new administrator"
-                  >
-                    <Plus size={15} />
-                  </button>
-                )}
-              </div>
+                {/* Module Settings Grid */}
+                <div className="glass-card p-6 border border-slate-200/50 dark:border-zinc-800/50 space-y-4">
+                  <div className="pb-3 border-b border-slate-105 dark:border-zinc-850">
+                    <h4 className="text-xs font-black uppercase text-slate-800 dark:text-white">Active Core &amp; Phased Modules</h4>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Toggle status switches to dynamically disable/hide modules. Data records are preserved across toggles.</p>
+                  </div>
 
-              {/* Admin profile list */}
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
-                {adminsList.map(admin => (
-                  <div
-                    key={admin.id}
-                    className="flex justify-between items-center p-3 rounded-xl bg-slate-50/80 dark:bg-zinc-950/30 border border-slate-200/50 dark:border-zinc-850/60 text-xs"
-                  >
-                    <div className="flex items-center gap-2">
-                      {admin.profile_photo ? (
-                        <img src={admin.profile_photo} alt="P" className="w-8 h-8 rounded-full object-cover border" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center">
-                          {admin.name.charAt(0).toUpperCase()}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      { id: "reports_dashboard", name: "Module 9: Dashboard & Reports", desc: "Overview analytics graphs, data CSV and print report tools.", core: true },
+                      { id: "faculty_software_requests", name: "Module 1: Faculty Software Requests", desc: "AXN tracking, status updaters, lab allocator dropdowns, receipt generator.", core: true },
+                      { id: "laboratory_management", name: "Module 2: Department & Laboratory Management", desc: "CRUD setups for building laboratories, seat counts, coordinates.", core: true },
+                      { id: "laboratory_software_records", name: "Module 3: Lab Software Installed Records", desc: "Log software presets, license types, stacks installed in computers.", core: true },
+                      { id: "maintenance_register", name: "Module 4: Maintenance Register Log", desc: "Technical interventions record sheet, technician logs, statuses.", core: true },
+                      { id: "laboratory_inventory", name: "Module 5: Laboratory Inventory System", desc: "Asset directory tracking computers, switches, ups, and printer specifications.", phase: 2 },
+                      { id: "asset_management", name: "Module 6: Asset Lifecycle & AMCs", desc: "Warranty expiry checker notifications, AMC contract registers.", phase: 2 },
+                      { id: "naac_documentation", name: "Module 7: NAAC Accreditation Docs", desc: "Base64 document uploads: utilization reports, stocks verifications, photos.", phase: 3 },
+                      { id: "ieee_compliance", name: "Module 8: IEEE Guidelines", desc: "Guidelines record database, safety inspection logs, SOP document templates.", phase: 3 },
+                      { id: "document_repository", name: "Module 10: Document Repository Archive", desc: "Categorized central download vault for invoices, licenses, and contracts.", phase: 3 },
+                      { id: "notifications", name: "Module 11: Warnings Alert Center", desc: "AMC expiry indicators, software demand warnings, maintenance alerts.", phase: 2 },
+                      { id: "search_audit_logs", name: "Module 12: Search & Audit timelines", desc: "Advanced cross-module quick queries search, operator action timeline.", phase: 3 }
+                    ].map(mod => {
+                      const isEnabled = modulesStatus[mod.id];
+                      return (
+                        <div key={mod.id} className="p-4 rounded-xl border border-slate-100 dark:border-zinc-850/60 bg-slate-50/30 dark:bg-zinc-950/20 flex items-center justify-between gap-4 text-xs">
+                          <div className="space-y-0.5 text-left">
+                            <span className="font-extrabold text-slate-800 dark:text-slate-205 block">{mod.name}</span>
+                            <span className="text-[10px] text-slate-500 leading-normal block">{mod.desc}</span>
+                            <div className="flex gap-2 items-center mt-1">
+                              {mod.core ? (
+                                <span className="text-[8px] font-black uppercase text-suas-ruby bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">Core Feature</span>
+                              ) : (
+                                <span className="text-[8px] font-black uppercase text-slate-400 bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">Phase {mod.phase}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleToggleModule(mod.id)}
+                            disabled={!isSuperAdmin}
+                            className="p-1 rounded-full hover:bg-white dark:hover:bg-zinc-900 transition duration-200 shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={isEnabled ? "Lock/Disable Module" : "Unlock/Enable Module"}
+                          >
+                            {isEnabled ? (
+                              <ToggleRight size={38} className="text-suas-ruby-neon" />
+                            ) : (
+                              <ToggleLeft size={38} className="text-slate-350 dark:text-zinc-800" />
+                            )}
+                          </button>
                         </div>
-                      )}
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Faculty Portal Configuration Controls */}
+                <div className="glass-card p-6 border border-slate-205 dark:border-zinc-800/50 space-y-4">
+                  <div className="pb-3 border-b border-slate-100 dark:border-zinc-850 flex justify-between items-center">
+                    <h4 className="text-xs font-black uppercase text-slate-800 dark:text-white">Faculty Portal Features</h4>
+                    <span className="text-[9px] text-slate-400 uppercase font-black">Dynamic toggles</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-slate-150 dark:border-zinc-850">
                       <div>
-                        <p className="font-extrabold text-slate-800 dark:text-slate-205">
-                          {admin.name} <span className="font-mono text-[9px] text-slate-400 font-normal">({admin.id})</span>
-                        </p>
-                        <p className="text-[9px] font-bold text-suas-ruby dark:text-suas-ruby-neon uppercase mt-0.5">{admin.role}</p>
+                        <span className="font-extrabold text-slate-800 dark:text-slate-200 block">Faculty Status Tracking Widget</span>
+                        <span className="text-[10px] text-slate-500 font-semibold">Enable system tracking status indicators inside faculty submission portal.</span>
                       </div>
+                      <button
+                        onClick={handleToggleTrackingConfig}
+                        disabled={!isWriteAllowed}
+                        className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition duration-200 cursor-pointer disabled:opacity-50"
+                      >
+                        {settings.installation_status_enabled === "true" ? (
+                          <ToggleRight size={38} className="text-suas-ruby-neon" />
+                        ) : (
+                          <ToggleLeft size={38} className="text-slate-400 dark:text-zinc-700" />
+                        )}
+                      </button>
                     </div>
-                    {isSuperAdmin && admin.id !== "admin" && (
-                      <div className="flex gap-1 shrink-0">
-                        <button
-                          onClick={() => handleOpenAdminModal("edit", admin)}
-                          className="p-1 text-slate-400 hover:text-suas-ruby transition"
-                          title="Edit Account"
-                        >
-                          <Edit size={11} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteAdminAccount(admin.id)}
-                          className="p-1 text-slate-400 hover:text-rose-500 transition"
-                          title="Delete Account"
-                        >
-                          <Trash2 size={11} />
-                        </button>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-slate-150 dark:border-zinc-855">
+                      <div>
+                        <span className="font-extrabold text-slate-800 dark:text-slate-200 block">Faculty Lab Allocation Selection</span>
+                        <span className="text-[10px] text-slate-500 font-semibold">Allow faculty to request/select target computing laboratories directly.</span>
                       </div>
+                      <button
+                        onClick={handleToggleLabSelectionConfig}
+                        disabled={!isWriteAllowed}
+                        className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition duration-200 cursor-pointer disabled:opacity-50"
+                      >
+                        {settings.faculty_lab_selection_enabled === "true" ? (
+                          <ToggleRight size={38} className="text-suas-ruby-neon" />
+                        ) : (
+                          <ToggleLeft size={38} className="text-slate-400 dark:text-zinc-700" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Announcement notice editor */}
+                  <div className="pt-3 border-t border-slate-100 dark:border-zinc-850 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                    <div className="md:col-span-1 space-y-0.5">
+                      <label className="text-xs font-black text-slate-700 dark:text-slate-300 block">Scrolling Notice Text</label>
+                      <p className="text-[10px] text-slate-455 font-medium">Displays on the Faculty Portal marquee.</p>
+                    </div>
+                    <div className="md:col-span-3 flex gap-2 w-full">
+                      <input
+                        type="text"
+                        placeholder="Notice: Enter scrolling notice here..."
+                        value={noticeInput}
+                        onChange={(e) => setNoticeInput(e.target.value)}
+                        className="field-input text-xs flex-1"
+                      />
+                      <button
+                        onClick={handleSaveNotice}
+                        disabled={!isWriteAllowed}
+                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-black rounded-xl transition duration-200 shrink-0 shadow-sm cursor-pointer"
+                      >
+                        Save Notice
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* General assistant profiles crud list */}
+                <div className="glass-card p-6 border border-slate-200/50 dark:border-zinc-800/50 space-y-4">
+                  <div className="pb-3 border-b border-slate-100 dark:border-zinc-850 flex justify-between items-center">
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-slate-805 dark:text-white font-display">Authorized Administrator Profiles</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Role-based accounts managing computing centers resource allocations.</p>
+                    </div>
+                    {isSuperAdmin && (
+                      <button
+                        onClick={() => handleOpenAdminModal("add")}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold uppercase text-[9px] tracking-wider transition cursor-pointer"
+                      >
+                        + Add Admin
+                      </button>
                     )}
                   </div>
-                ))}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {adminsList.map(admin => (
+                      <div
+                        key={admin.id}
+                        className="p-4 rounded-xl border border-slate-105 dark:border-zinc-850 bg-slate-50/50 dark:bg-zinc-950/20 flex items-center justify-between gap-4 text-xs font-bold"
+                      >
+                        <div className="flex items-center gap-3">
+                          {admin.profile_photo ? (
+                            <img src={admin.profile_photo} alt="P" className="w-10 h-10 rounded-full object-cover border border-slate-205 shrink-0" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-rose-50 dark:bg-rose-955/20 text-suas-ruby font-black text-sm flex items-center justify-center border border-rose-100 shrink-0">
+                              {admin.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="text-left">
+                            <span className="text-slate-855 dark:text-white block">{admin.name} <span className="font-mono text-[9px] text-slate-400 font-normal">({admin.id})</span></span>
+                            <span className="text-[9px] text-suas-ruby font-black uppercase block mt-0.5">{admin.role}</span>
+                            <span className="text-[10px] text-slate-550 font-semibold block mt-0.5">Assigned: {admin.assigned_labs || "All Labs"}</span>
+                          </div>
+                        </div>
+
+                        {isSuperAdmin && admin.id !== "admin" && (
+                          <div className="flex gap-1 shrink-0">
+                            <button
+                              onClick={() => handleOpenAdminModal("edit", admin)}
+                              className="p-1.5 text-slate-400 hover:text-suas-ruby transition cursor-pointer"
+                              title="Edit Admin Account"
+                            >
+                              <Edit size={12} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAdminAccount(admin.id)}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/25 rounded-lg transition cursor-pointer"
+                              title="Delete Admin Account"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-
-            {/* Lab Distribution Allocation bar chart summary */}
-            <div className="glass-card p-5 bg-white/70 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850/60 shadow-sm space-y-3.5">
-              <h3 className="text-xs font-black text-slate-705 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                <Server size={14} className="text-suas-ruby" /> Laboratory Allocation
-              </h3>
-              {totalClassesCount === 0 ? (
-                <p className="text-xs text-slate-400 italic">No allocation data yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {LABS.map(lab => (
-                    <BarRow key={lab} label={lab} count={labCounts[lab] || 0} max={totalClassesCount} />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Semester distribution load bar chart summary */}
-            <div className="glass-card p-5 bg-white/70 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850/60 shadow-sm space-y-3.5">
-              <h3 className="text-xs font-black text-slate-705 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                <BookOpen size={14} className="text-suas-ruby" /> Semester Load Distribution
-              </h3>
-              {totalClassesCount === 0 ? (
-                <p className="text-xs text-slate-400 italic">No load data yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {SEMESTERS.map(sem => (
-                    <BarRow key={sem} label={sem} count={semesterCounts[sem] || 0} max={totalClassesCount} color="green" />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Software demand ranking */}
-            <div className="glass-card p-5 bg-white/70 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850/60 shadow-sm space-y-3.5">
-              <h3 className="text-xs font-black text-slate-750 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                <BarChart3 size={14} className="text-suas-ruby" /> Top Requested Software
-              </h3>
-              {topSoftwares.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">No requests recorded yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {topSoftwares.map(([swName, count]) => (
-                    <BarRow key={swName} label={swName} count={count} max={Math.max(...topSoftwares.map(s => s[1]))} color="yellow" />
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </div>
+            ) : (
+              /* Render Modular LMS panels */
+              <LmsPanels
+                activeTab={activeTab}
+                departmentDetails={departmentDetails}
+                submissions={submissions}
+                laboratories={laboratories}
+                labSoftwares={labSoftwares}
+                maintenanceLogs={maintenanceLogs}
+                inventoryItems={inventoryItems}
+                assetLifecycles={assetLifecycles}
+                naacDocsList={naacDocsList}
+                ieeeRecords={ieeeRecords}
+                documentRepoList={documentRepoList}
+                auditLogsList={auditLogsList}
+                modulesStatus={modulesStatus}
+                activeAdmin={activeAdmin}
+                fetchData={fetchData}
+                showToast={showToast}
+                onSaveLab={handleSaveLab}
+                onDeleteLab={handleDeleteLab}
+                onSaveSoftware={handleSaveSoftwareRecord}
+                onDeleteSoftware={handleDeleteSoftwareRecord}
+                onSaveMaintenance={handleSaveMaintenanceRecord}
+                onDeleteMaintenance={handleDeleteMaintenanceRecord}
+                onSaveInventory={handleSaveInventoryRecord}
+                onDeleteInventory={handleDeleteInventoryRecord}
+                onSaveLifecycle={handleSaveAssetLifecycleRecord}
+                onDeleteLifecycle={handleDeleteAssetLifecycleRecord}
+                onUploadNaac={handleUploadNaacDoc}
+                onDeleteNaac={handleDeleteNaacDoc}
+                onSaveIeee={handleSaveIeeeComplianceRecord}
+                onDeleteIeee={handleDeleteIeeeComplianceRecord}
+                onUploadRepoDoc={handleUploadRepoDoc}
+                onDeleteRepoDoc={handleDeleteRepoDoc}
+                onSaveDepartment={handleSaveDepartmentDetails}
+                onClearLogs={handleClearLogs}
+                showLabModal={showLabModal}
+                setShowLabModal={setShowLabModal}
+                editingLab={editingLab}
+                setEditingLab={setEditingLab}
+                showSoftwareModal={showSoftwareModal}
+                setShowSoftwareModal={setShowSoftwareModal}
+                editingSoftware={editingSoftware}
+                setEditingSoftware={setEditingSoftware}
+                showMaintenanceModal={showMaintenanceModal}
+                setShowMaintenanceModal={setShowMaintenanceModal}
+                editingMaintenance={editingMaintenance}
+                setEditingMaintenance={setEditingMaintenance}
+                showInventoryModal={showInventoryModal}
+                setShowInventoryModal={setShowInventoryModal}
+                editingInventory={editingInventory}
+                setEditingInventory={setEditingInventory}
+                showLifecycleModal={showLifecycleModal}
+                setShowLifecycleModal={setShowLifecycleModal}
+                editingLifecycle={editingLifecycle}
+                setEditingLifecycle={setEditingLifecycle}
+                showNaacModal={showNaacModal}
+                setShowNaacModal={setShowNaacModal}
+                naacLabId={naacLabId}
+                setNaacLabId={setNaacLabId}
+                naacDocType={naacDocType}
+                setNaacDocType={setNaacDocType}
+                naacDocName={naacDocName}
+                setNaacDocName={setNaacDocName}
+                naacFileBase64={naacFileBase64}
+                setNaacFileBase64={setNaacFileBase64}
+                naacRemarks={naacRemarks}
+                setNaacRemarks={setNaacRemarks}
+                showIeeeModal={showIeeeModal}
+                setShowIeeeModal={setShowIeeeModal}
+                editingIeee={editingIeee}
+                setEditingIeee={setEditingIeee}
+                showDocRepoModal={showDocRepoModal}
+                setShowDocRepoModal={setShowDocRepoModal}
+                repoCategory={repoCategory}
+                setRepoCategory={setRepoCategory}
+                repoDocName={repoDocName}
+                setRepoDocName={setRepoDocName}
+                repoFileBase64={repoFileBase64}
+                setRepoFileBase64={setRepoFileBase64}
+                repoAssociatedId={repoAssociatedId}
+                setRepoAssociatedId={setRepoAssociatedId}
+                repoRemarks={repoRemarks}
+                setRepoRemarks={setRepoRemarks}
+                handleFileChange={handleFileChange}
+                onUpdateClass={handleUpdateClass}
+                onDeleteSubmission={handleDeleteSubmission}
+                onOpenCreateModal={() => setShowCreateModal(true)}
+                onNavigateToTab={(tab) => setActiveTab(tab)}
+              />
+            )}
+          </main>
         </div>
       </div>
 
