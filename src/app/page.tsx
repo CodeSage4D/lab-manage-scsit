@@ -358,7 +358,7 @@ export default function FacultyPortal() {
       </header>
 
       {/* Main Body */}
-      <main className="flex-1 w-full max-w-4xl mx-auto space-y-6 pb-12">
+      <main className="flex-1 w-full max-w-4xl mx-auto space-y-6 pb-12 no-print">
            {/* Notice Scroll Ticker */}
         {settings.notice_text && step === 1 && (
           <div className="monorail-wrap no-print rounded-2xl mb-2 flex items-center shadow-sm">
@@ -859,7 +859,7 @@ export default function FacultyPortal() {
       {/* STEP 3 REVIEW POPUP MODAL (Verification screen) */}
       <AnimatePresence>
         {showReviewModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-md no-print">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}

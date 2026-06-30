@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useRef, useState, useEffect, useCallback } from "react";
-import { Trash2, CheckCircle2 } from "lucide-react";
+import React, { useRef, useState, useEffect } from "react";
+import { CheckCircle2, FileEdit } from "lucide-react";
 
 interface SignaturePadProps {
   onChange:        (dataUrl: string | null) => void;
@@ -9,167 +9,100 @@ interface SignaturePadProps {
 }
 
 export default function SignaturePad({ onChange, savedSignature }: SignaturePadProps) {
-  const canvasRef  = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [typedName, setTypedName] = useState("");
   const [hasSigned, setHasSigned] = useState(false);
 
-  /* ── Derive stroke colour from current dark-mode class ───────────────── */
+  // Derive signature text color based on dark mode status
   const getStrokeColor = () =>
     document.documentElement.classList.contains("dark") ? "#FF0055" : "#E11D48";
 
-  /* ── Initialise canvas (HiDPI) — runs once on mount ──────────────────── */
+  // Re-draw text signature to canvas whenever typedName or theme color changes
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const rect = canvas.getBoundingClientRect();
-    // BUG FIX: only resize when dimensions actually changed to avoid wiping the canvas on re-renders
-    if (canvas.width !== Math.round(rect.width * devicePixelRatio) ||
-        canvas.height !== Math.round(rect.height * devicePixelRatio)) {
-      canvas.width  = Math.round(rect.width  * devicePixelRatio);
-      canvas.height = Math.round(rect.height * devicePixelRatio);
-      ctx.scale(devicePixelRatio, devicePixelRatio);
+    // Reset/clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!typedName.trim()) {
+      setHasSigned(false);
+      onChange(null);
+      return;
     }
 
-    ctx.strokeStyle = getStrokeColor();
-    ctx.lineWidth   = 2.5;
-    ctx.lineCap     = "round";
-    ctx.lineJoin    = "round";
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // mount-only
+    // Canvas size setup
+    canvas.width = 400;
+    canvas.height = 120;
 
-  /* ── Load saved signature (when restored from draft) ─────────────────── */
-  useEffect(() => {
-    if (!savedSignature) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    // Background setup (solid white to print nicely on PDF)
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const img = new Image();
-    img.onload = () => {
-      const rect = canvas.getBoundingClientRect();
-      ctx.clearRect(0, 0, rect.width, rect.height);
-      ctx.drawImage(img, 0, 0, rect.width, rect.height);
-      setHasSigned(true);
-    };
-    img.onerror = () => { /* ignore broken saved data */ };
-    img.src = savedSignature;
-  }, [savedSignature]);
+    // Draw script text signature
+    ctx.fillStyle = getStrokeColor();
+    ctx.font = "italic bold 32px 'Brush Script MT', 'Dancing Script', cursive";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(typedName, canvas.width / 2, canvas.height / 2);
 
-  /* ── Coordinate helper (supports touch + mouse, normalised to CSS px) ── */
-  const getCoords = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number } => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-
-    if ("touches" in e) {
-      if (e.touches.length === 0) return { x: 0, y: 0 };
-      return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top,
-      };
-    }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  /* ── Drawing handlers ─────────────────────────────────────────────────── */
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.strokeStyle = getStrokeColor();
-    const { x, y } = getCoords(e);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    setIsDrawing(true);
-  };
-
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const { x, y } = getCoords(e);
-    ctx.lineTo(x, y);
-    ctx.stroke();
     setHasSigned(true);
-  };
-
-  /* BUG FIX: wrap in useCallback so the event identity is stable */
-  const stopDrawing = useCallback(() => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
-    const canvas = canvasRef.current;
-    if (!canvas || !hasSigned) { onChange(null); return; }
     onChange(canvas.toDataURL("image/png"));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDrawing, hasSigned, onChange]);
+  }, [typedName, onChange]);
 
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    ctx.clearRect(0, 0, rect.width, rect.height);
-    setHasSigned(false);
-    setIsDrawing(false);
-    onChange(null);
-  };
+  // Handle restoring saved signature (if any)
+  useEffect(() => {
+    if (savedSignature && !typedName) {
+      setHasSigned(true);
+    }
+  }, [savedSignature, typedName]);
 
   return (
-    <div className="w-full space-y-2">
+    <div className="w-full space-y-3 text-left">
       <div className="flex items-center justify-between text-xs">
-        <span className="font-semibold text-slate-600 dark:text-slate-300">
-          Draw Signature Here
+        <span className="font-semibold text-slate-650 dark:text-slate-350 flex items-center gap-1.5">
+          <FileEdit size={14} className="text-suas-ruby" />
+          Type Full Name to Sign
         </span>
         {hasSigned && (
-          <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-            <CheckCircle2 size={13} /> Recorded
+          <span className="text-emerald-600 dark:text-emerald-450 font-medium flex items-center gap-1">
+            <CheckCircle2 size={13} /> Digitally Signed
           </span>
         )}
       </div>
 
-      {/* Canvas wrapper */}
-      <div className="relative rounded-2xl overflow-hidden
-        border-2 border-dashed border-slate-300/60 dark:border-slate-600/50
-        bg-white/75 dark:bg-slate-900/60
-        hover:border-suas-blue/40 dark:hover:border-suas-teal/40 transition">
-        <canvas
-          ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseLeave={stopDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={stopDrawing}
-          className="block w-full cursor-crosshair touch-none select-none"
-          style={{ height: 180 }}
+      <div className="space-y-2">
+        <input
+          type="text"
+          placeholder="Type your full name (e.g. Dr. Rohan Sharma)"
+          value={typedName}
+          onChange={(e) => setTypedName(e.target.value)}
+          className="w-full px-4 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 outline-none text-slate-850 dark:text-slate-200 focus:ring-1 focus:ring-suas-ruby"
         />
-        {/* Clear button */}
-        <button
-          type="button"
-          onClick={clearCanvas}
-          className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5
-            px-3 py-1.5 text-xs font-bold rounded-xl
-            bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400
-            border border-slate-200 dark:border-slate-700
-            hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-700 transition shadow-sm"
-          title="Clear signature"
-        >
-          <Trash2 size={12} /> Clear
-        </button>
+
+        {/* Live signature preview box */}
+        {typedName.trim() && (
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-850 bg-white flex items-center justify-center min-h-[90px] shadow-sm animate-float-up">
+            <span 
+              className="text-2xl font-bold italic tracking-wide text-center"
+              style={{
+                fontFamily: "'Brush Script MT', 'Dancing Script', cursive",
+                color: getStrokeColor()
+              }}
+            >
+              {typedName}
+            </span>
+          </div>
+        )}
       </div>
-      <p className="text-[10px] text-slate-400 dark:text-slate-500">
-        Use your mouse, trackpad, or touchscreen to draw your signature.
+
+      {/* Hidden canvas used to generate base64 DataURL for backend/database consistency */}
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+      
+      <p className="text-[10px] text-slate-400 dark:text-slate-550 italic">
+        By typing your name, you authorize this as your verified digital e-signature.
       </p>
     </div>
   );
