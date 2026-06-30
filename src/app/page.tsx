@@ -359,27 +359,8 @@ export default function FacultyPortal() {
 
       {/* Main Body */}
       <main className="flex-1 w-full max-w-4xl mx-auto space-y-6 pb-12">
-        
-        {/* Portal navigation tabs */}
-        {settings.installation_status_enabled === "true" && step !== 3 && (
-          <div className="no-print flex justify-center bg-slate-50 dark:bg-zinc-900/50 p-1.5 rounded-2xl border border-slate-200/50 dark:border-zinc-800/80 max-w-md mx-auto mb-2">
-            <button
-              onClick={() => setPortalTab("submit")}
-              className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition cursor-pointer ${portalTab === "submit" ? "bg-white dark:bg-zinc-950 text-suas-ruby dark:text-suas-ruby-neon shadow-sm border border-slate-200/40 dark:border-zinc-800/40" : "text-slate-400 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-350"}`}
-            >
-              Submit Requirements
-            </button>
-            <button
-              onClick={() => setPortalTab("track")}
-              className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition cursor-pointer ${portalTab === "track" ? "bg-white dark:bg-zinc-950 text-suas-ruby dark:text-suas-ruby-neon shadow-sm border border-slate-200/40 dark:border-zinc-800/40" : "text-slate-400 dark:text-slate-500 hover:text-slate-655 dark:hover:text-slate-350"}`}
-            >
-              Track Request Status
-            </button>
-          </div>
-        )}
-
-        {/* Notice Scroll Ticker */}
-        {settings.notice_text && step === 1 && portalTab === "submit" && (
+           {/* Notice Scroll Ticker */}
+        {settings.notice_text && step === 1 && (
           <div className="monorail-wrap no-print rounded-2xl mb-2 flex items-center shadow-sm">
             <div className="monorail-title">Announcement</div>
             <div className="monorail-content-container">
@@ -391,9 +372,7 @@ export default function FacultyPortal() {
           </div>
         )}
 
-        {portalTab === "submit" && (
-          <>
-            {/* STEP 1: Faculty Information Enrollment */}
+        {/* STEP 1: Faculty Information Enrollment */}
             {step === 1 && (
           <motion.div 
             initial={{ opacity: 0, y: 15 }} 
@@ -748,10 +727,8 @@ export default function FacultyPortal() {
             </button>
           </motion.div>
         )}
-      </>
-    )}
-          {/* LOOKUP TRACKING WIDGET */}
-        {portalTab === "track" && (
+        {/* LOOKUP TRACKING WIDGET */}
+        {step !== 3 && (
           <motion.div 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
