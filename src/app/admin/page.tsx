@@ -317,7 +317,7 @@ export default function AdminDashboard() {
     fetchData();
   }, [router, fetchData]);
 
-  const handleLogout = () => {
+  const handleLogout = React.useCallback(() => {
     localStorage.removeItem("admin_auth");
     localStorage.removeItem("admin_name");
     localStorage.removeItem("admin_role");
@@ -327,7 +327,33 @@ export default function AdminDashboard() {
     localStorage.removeItem("admin_assigned_labs");
     localStorage.removeItem("admin_profile_photo");
     router.push("/admin/login");
-  };
+  }, [router]);
+
+  // Auto logout on inactivity (5 minutes)
+  useEffect(() => {
+    if (!authorized) return;
+
+    let timeoutId: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        handleLogout();
+        // Trigger alert via native alert or state indicator
+        console.log("Session expired due to inactivity");
+      }, 5 * 60 * 1000); // 5 minutes inactivity
+    };
+
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    events.forEach(event => window.addEventListener(event, resetTimer));
+
+    resetTimer();
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach(event => window.removeEventListener(event, resetTimer));
+    };
+  }, [authorized, handleLogout]);
 
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light";
@@ -492,7 +518,10 @@ export default function AdminDashboard() {
 
   /* ── RBAC Checks ── */
   const isSuperAdmin = activeAdmin?.role === "Director Admin";
-  const isWriteAllowed = activeAdmin?.role === "Director Admin" || activeAdmin?.role === "IT Person";
+  const isWriteAllowed = activeAdmin?.role === "Director Admin" || 
+                         activeAdmin?.role === "IT Person" || 
+                         activeAdmin?.role === "Trainer of Practice" || 
+                         activeAdmin?.role === "Lab Assistant";
 
   /* ── Create Manual Request ── */
   const handleAddNewReqSoft = () => {

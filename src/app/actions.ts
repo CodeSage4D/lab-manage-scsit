@@ -128,18 +128,29 @@ export async function initDatabase() {
     `;
     console.log("Migration: Ensured GIN index on 'subjects' JSONB column exists.");
 
-    // Seed default administrators if the table is empty (exactly 6 admins)
+    // Seed default administrators if the table is empty or new Super Admin N5428 is missing (exactly 5 default heads)
     const adminCountResult = await sql`SELECT COUNT(*)::int as total FROM suas_admins`;
-    if (adminCountResult[0]?.total === 0) {
+    const hasNewSuperAdmin = await sql`SELECT COUNT(*)::int as total FROM suas_admins WHERE id = 'N5428'`;
+    
+    if (adminCountResult[0]?.total === 0 || hasNewSuperAdmin[0]?.total === 0) {
+      // Clear out legacy default users to avoid stale profiles
+      await sql`DELETE FROM suas_admins WHERE id IN ('admin', 'it.staff1', 'it.staff2', 'it.staff3', 'trainer1', 'assistant1')`;
+      
       await sql`
         INSERT INTO suas_admins (id, name, email, mobile, assigned_labs, role, password, profile_photo)
         VALUES 
-        ('admin', 'System Director', 'director@suas.ac.in', '9999999901', 'Lab A,Lab B,Lab C,Lab D,Lab E,Lab F,Lab G,Lab H,Lab I', 'Director Admin', 'Admin@SCSIT2026', NULL),
-        ('it.staff1', 'IT Staff 1', 'staff1@suas.ac.in', '9999999902', 'Lab A,Lab B', 'IT Person', 'Admin@123', NULL),
-        ('it.staff2', 'IT Staff 2', 'staff2@suas.ac.in', '9999999903', 'Lab C,Lab D', 'IT Person', 'Admin@123', NULL),
-        ('it.staff3', 'IT Staff 3', 'staff3@suas.ac.in', '9999999904', 'Lab E,Lab F', 'IT Person', 'Admin@123', NULL),
-        ('trainer1', 'Practice Trainer 1', 'trainer1@suas.ac.in', '9999999905', 'Lab G,Lab H', 'Trainer of Practice', 'Admin@123', NULL),
-        ('assistant1', 'Lab Assistant 1', 'assistant1@suas.ac.in', '9999999906', 'Lab I', 'Lab Assistant', 'Admin@123', NULL);
+        ('N5428', 'Karan Mishra', 'Karan.mishra@suas.ac.in', '9999999901', 'Lab A,Lab B,Lab C,Lab D,Lab E,Lab F,Lab G,Lab H,Lab I', 'Director Admin', '@dn1m@26', NULL),
+        ('monark.raikwar', 'Monark Raikwar', 'monark.raikwar@suas.ac.in', '9999999902', 'Lab A,Lab B', 'Lab Assistant', '@dn1m@26', NULL),
+        ('nitin.panchal', 'Nitin Panchal', 'nitin.panchal@suas.ac.in', '9999999903', 'Lab C,Lab D', 'Lab Assistant', '@dn1m@26', NULL),
+        ('prashant.patil', 'Prashant Patil', 'prashant.patil@suas.ac.in', '9999999904', 'Lab E,Lab F', 'Lab Assistant', '@dn1m@26', NULL),
+        ('salman.khan', 'Salman Khan', 'salman.khan@suas.ac.in', '9999999905', 'Lab G,Lab H,Lab I', 'Trainer of Practice', '@dn1m@26', NULL)
+        ON CONFLICT (id) DO UPDATE SET 
+          name = EXCLUDED.name,
+          email = EXCLUDED.email,
+          mobile = EXCLUDED.mobile,
+          assigned_labs = EXCLUDED.assigned_labs,
+          role = EXCLUDED.role,
+          password = EXCLUDED.password;
       `;
     }
 
@@ -600,7 +611,7 @@ export async function verifyAdminLogin(id: string, password: string) {
     const result = await sql`
       SELECT id, name, email, mobile, assigned_labs, role, profile_photo
       FROM suas_admins
-      WHERE LOWER(id) = LOWER(${id.trim()}) AND password = ${password}
+      WHERE (LOWER(id) = LOWER(${id.trim()}) OR LOWER(email) = LOWER(${id.trim()})) AND password = ${password}
     `;
     if (result.length > 0) {
       return { success: true, data: result[0] };
