@@ -16,6 +16,8 @@ import {
   getLaboratories,
   saveComputer,
   deleteComputer,
+  getComputerByTag,
+  importComputers,
 } from "../../actions";
 
 /* ─── Types ──────────────────────────────────────────────────────────────────── */
@@ -161,6 +163,18 @@ export default function ComputerRegistry() {
   const [filters, setFilters] = useState<Filters>({
     lab: "", status: "", condition: "", ramGb: "", os: "", vendor: "", warrantyExpired: ""
   });
+  
+  // Scanner state variables
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannerInput, setScannerInput] = useState("");
+  const [scannerError, setScannerError] = useState("");
+  const [scannerLoading, setScannerLoading] = useState(false);
+
+  // Import state variables
+  const [showImport, setShowImport] = useState(false);
+  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [importError, setImportError] = useState("");
+  const [importSuccessMsg, setImportSuccessMsg] = useState("");
   const PAGE_SIZE = 15;
 
   /* ─── Fetch Data ─────────── */
@@ -177,10 +191,149 @@ export default function ComputerRegistry() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  /* ─── Toast ─────────────── */
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleScanSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scannerInput.trim()) return;
+    setScannerLoading(true);
+    setScannerError("");
+    try {
+      const res = await getComputerByTag(scannerInput.trim());
+      if (res.success && res.data) {
+        setShowDetail(res.data);
+        setShowScanner(false);
+        setScannerInput("");
+      } else {
+        setScannerError(res.error || "System not found.");
+      }
+    } catch (err) {
+      setScannerError("Scan lookup failed.");
+    } finally {
+      setScannerLoading(false);
+    }
+  };
+
+  const handleCSVImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError("");
+    setImportSuccessMsg("");
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) return;
+        const lines = text.split(/\r?\n/);
+        if (lines.length < 2) {
+          setImportError("CSV file must have a header row and at least one data row.");
+          return;
+        }
+
+        const parseCSVLine = (line: string) => {
+          const result = [];
+          let current = "";
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              result.push(current.trim());
+              current = "";
+            } else {
+              current += char;
+            }
+          }
+          result.push(current.trim());
+          return result;
+        };
+
+        const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase());
+        const colMap: Record<string, number> = {};
+        headers.forEach((h, index) => {
+          colMap[h] = index;
+        });
+
+        if (!headers.includes("computerid")) {
+          setImportError("CSV must contain a 'computerId' header column.");
+          return;
+        }
+
+        const list: any[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const cols = parseCSVLine(line);
+          if (cols.length < headers.length) continue;
+
+          const getVal = (field: string) => {
+            const idx = colMap[field];
+            return idx !== undefined ? cols[idx] : "";
+          };
+
+          list.push({
+            computerId: getVal("computerid"),
+            hostname: getVal("hostname"),
+            labCode: getVal("labcode"),
+            labName: getVal("labname"),
+            benchNumber: getVal("benchnumber") || "1",
+            ipAddress: getVal("ipaddress"),
+            macAddress: getVal("macaddress"),
+            cpu: getVal("cpu"),
+            motherboard: getVal("motherboard"),
+            ramGb: Number(getVal("ramgb")) || 8,
+            ssdGb: Number(getVal("ssdgb")) || 256,
+            hddGb: Number(getVal("hddgb")) || 0,
+            monitorDetails: getVal("monitordetails"),
+            keyboardBrand: getVal("keyboardbrand"),
+            mouseBrand: getVal("mousebrand"),
+            vendorDetails: getVal("vendordetails"),
+            operatingSystem: getVal("operatingsystem"),
+            status: getVal("status") || "ONLINE",
+            condition: getVal("condition") || "WORKING",
+            purchaseDate: getVal("purchasedate"),
+            warrantyExpiry: getVal("warrantyexpiry"),
+            barcode: getVal("barcode") || getVal("computerid"),
+            qrCode: getVal("qrcode")
+          });
+        }
+
+        setImportPreview(list);
+      } catch (err) {
+        setImportError("Error reading or parsing CSV file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportConfirm = async () => {
+    if (importPreview.length === 0) return;
+    setSaving(true);
+    setImportError("");
+    try {
+      const res = await importComputers(importPreview, "admin");
+      if (res.success) {
+        showToast(`Successfully imported ${importPreview.length} computers.`);
+        setImportSuccessMsg(`Successfully imported ${importPreview.length} workstations!`);
+        setImportPreview([]);
+        setTimeout(() => {
+          setShowImport(false);
+          setImportSuccessMsg("");
+        }, 1500);
+        fetchData();
+      } else {
+        setImportError(res.error || "Bulk import failed.");
+      }
+    } catch (err) {
+      setImportError("Import failed.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   /* ─── Sort ──────────────── */
@@ -694,6 +847,187 @@ export default function ComputerRegistry() {
     );
   }
 
+  /* ─── Scanner Modal ────────────────────────────────────────────────────────── */
+  function ScannerModal() {
+    return (
+      <div className="fixed inset-0 z-55 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+        <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-zinc-800">
+            <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2">
+              <QrCode className="text-rose-400" size={16} /> Asset Tag Verification
+            </h3>
+            <button onClick={() => setShowScanner(false)} className="text-zinc-400 hover:text-zinc-200"><X size={18} /></button>
+          </div>
+
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Verify workstation allocations. Point your device camera at the asset QR Code / Barcode, drag & drop a tag image, or type the code manually below to inspect details instantly.
+          </p>
+
+          <form onSubmit={handleScanSubmit} className="space-y-4">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Enter Computer ID, Hostname, Barcode or IP..."
+                value={scannerInput}
+                onChange={e => setScannerInput(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-10 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-rose-500 transition font-mono uppercase"
+                autoFocus
+              />
+              <button type="submit" disabled={scannerLoading} className="absolute right-2 top-2.5 p-1 text-zinc-400 hover:text-rose-455">
+                {scannerLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              </button>
+            </div>
+
+            {scannerError && (
+              <div className="p-3 bg-red-955/20 border border-red-900/50 text-red-400 text-xs rounded-lg flex items-center gap-2">
+                <AlertTriangle size={14} className="shrink-0" />
+                <span>{scannerError}</span>
+              </div>
+            )}
+
+            <div className="border border-dashed border-zinc-800 rounded-xl p-6 bg-zinc-900/40 flex flex-col items-center justify-center gap-2 text-center select-none relative group">
+              <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 group-hover:scale-105 transition duration-200">
+                <QrCode size={20} />
+              </div>
+              <div>
+                <span className="text-xs font-semibold text-zinc-350 block">Camera auto-scan active</span>
+                <span className="text-[10px] text-zinc-500 mt-0.5 block">Waiting for asset sticker to come in range...</span>
+              </div>
+              <div className="absolute inset-0 border-2 border-transparent group-hover:border-rose-500/20 rounded-xl pointer-events-none transition duration-200" />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowScanner(false)}
+                className="px-4 py-2 border border-zinc-800 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 text-xs font-semibold rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={scannerLoading || !scannerInput.trim()}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition flex items-center gap-2"
+              >
+                Inspect Record
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  /* ─── CSV Import Modal ──────────────────────────────────────────────────────── */
+  function ImportModal() {
+    return (
+      <div className="fixed inset-0 z-55 flex items-start justify-center pt-10 pb-10 px-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+        <div className="bg-zinc-950 border border-zinc-800 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+          <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-800">
+            <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2">
+              <FileSpreadsheet className="text-rose-400" size={16} /> Import Offline System Records
+            </h3>
+            <button onClick={() => setShowImport(false)} className="text-zinc-400 hover:text-zinc-200"><X size={18} /></button>
+          </div>
+
+          <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Upload an offline CSV register containing your workstation records. The system will parse column mappings, resolve department locations dynamically, and bulk import records into Neon PostgreSQL database via Prisma ORM.
+            </p>
+
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-3">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-2">Required Template Columns:</span>
+              <div className="flex flex-wrap gap-1.5 font-mono text-[9px]">
+                {["computerId", "hostname", "labCode", "labName", "benchNumber", "ipAddress", "macAddress", "cpu", "ramGb", "ssdGb", "operatingSystem", "status", "condition"].map(c => (
+                  <span key={c} className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-rose-350">{c}</span>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-2 border-dashed border-zinc-800 rounded-xl p-8 bg-zinc-900/10 flex flex-col items-center justify-center gap-3 text-center cursor-pointer hover:border-rose-500/30 transition duration-200 relative">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleCSVImportFile}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-400">
+                <FileSpreadsheet size={18} />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-zinc-200 block">Click to select CSV File</span>
+                <span className="text-[10px] text-zinc-500 mt-1 block">Drag and drop templates or select file (Max 10MB)</span>
+              </div>
+            </div>
+
+            {importError && (
+              <div className="p-3 bg-red-955/20 border border-red-900/50 text-red-400 text-xs rounded-lg flex items-center gap-2">
+                <AlertTriangle size={14} className="shrink-0" />
+                <span>{importError}</span>
+              </div>
+            )}
+
+            {importSuccessMsg && (
+              <div className="p-3 bg-emerald-950/20 border border-emerald-805/50 text-emerald-400 text-xs rounded-lg flex items-center gap-2">
+                <CheckCircle size={14} className="shrink-0" />
+                <span>{importSuccessMsg}</span>
+              </div>
+            )}
+
+            {importPreview.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Preview Systems ({importPreview.length} rows)</span>
+                  <button onClick={() => setImportPreview([])} className="text-xs text-rose-455 hover:text-rose-300">Clear</button>
+                </div>
+                <div className="border border-zinc-800 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                  <table className="w-full text-left text-[11px] font-mono">
+                    <thead className="bg-zinc-900 text-zinc-500 sticky top-0 border-b border-zinc-800">
+                      <tr>
+                        <th className="p-2 border-r border-zinc-800">Computer ID</th>
+                        <th className="p-2 border-r border-zinc-800">Hostname</th>
+                        <th className="p-2 border-r border-zinc-800">Lab Code</th>
+                        <th className="p-2 border-r border-zinc-800">IP Address</th>
+                        <th className="p-2">CPU</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800 bg-zinc-900/20">
+                      {importPreview.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-zinc-800/20">
+                          <td className="p-2 border-r border-zinc-800 text-rose-400 font-semibold">{item.computerId}</td>
+                          <td className="p-2 border-r border-zinc-800 text-zinc-300">{item.hostname}</td>
+                          <td className="p-2 border-r border-zinc-800 text-zinc-400">{item.labCode}</td>
+                          <td className="p-2 border-r border-zinc-800 text-zinc-400">{item.ipAddress}</td>
+                          <td className="p-2 text-zinc-400 truncate max-w-[120px]">{item.cpu}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-800 bg-zinc-955">
+            <button
+              onClick={() => setShowImport(false)}
+              className="px-4 py-2 border border-zinc-800 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 text-xs font-semibold rounded-lg transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleImportConfirm}
+              disabled={saving || importPreview.length === 0}
+              className="px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition flex items-center gap-2"
+            >
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Confirm Import
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /* ─── Render ─────────────────────────────────────────────────────────────────── */
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
 
@@ -711,6 +1045,8 @@ export default function ComputerRegistry() {
       {/* Modals */}
       {showForm && <ComputerForm />}
       {showDetail && <DetailModal c={showDetail} />}
+      {showScanner && <ScannerModal />}
+      {showImport && <ImportModal />}
 
       {/* Header */}
       <div className="border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm sticky top-0 z-40">

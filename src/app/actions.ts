@@ -1026,3 +1026,126 @@ export async function submitForm(data: any, ...args: any[]): Promise<ServiceResu
 export async function lookupSubmissionStatus(...args: any[]): Promise<ServiceResult> {
   return { success: true, data: [] };
 }
+
+export async function getComputerByTag(tag: string): Promise<ServiceResult> {
+  try {
+    const computer = await prisma.computer.findFirst({
+      where: {
+        OR: [
+          { computerId: { equals: tag, mode: 'insensitive' } },
+          { hostname: { equals: tag, mode: 'insensitive' } },
+          { barcode: { equals: tag, mode: 'insensitive' } },
+          { qrCode: { equals: tag, mode: 'insensitive' } },
+          { ipAddress: { equals: tag, mode: 'insensitive' } }
+        ]
+      },
+      include: {
+        lab: true,
+        deployments: { include: { software: true } },
+        maintenanceLogs: { orderBy: { reportedDate: "desc" } },
+        movementHistory: { orderBy: { movedDate: "desc" } },
+      }
+    });
+    if (!computer) return { success: false, error: "No system matching this tag, hostname, or IP was found." };
+    return { success: true, data: computer };
+  } catch (e: any) {
+    return { success: false, error: "Database lookup failed." };
+  }
+}
+
+export async function importComputers(computersList: any[], authorId?: any): Promise<ServiceResult> {
+  try {
+    const safeAuthorId = String(authorId || "system");
+    const results = await prisma.$transaction(async (tx) => {
+      const createdCount = [];
+      for (const compData of computersList) {
+        let lab = await tx.lab.findFirst({
+          where: {
+            OR: [
+              { code: { equals: compData.labCode || "", mode: 'insensitive' } },
+              { name: { equals: compData.labName || "", mode: 'insensitive' } }
+            ]
+          }
+        });
+        
+        if (!lab) {
+          lab = await tx.lab.findFirst() || await tx.lab.create({
+            data: {
+              name: compData.labName || "General Lab",
+              code: compData.labCode || "GEN-LAB",
+              building: "EB",
+              floor: "1",
+              location: "EB Floor 1",
+              seatingCapacity: 30,
+              totalComputers: 30,
+              operatingSystem: "Windows 11 Pro",
+              primaryPurpose: "General Programming"
+            }
+          });
+        }
+
+        const payload = {
+          computerId: compData.computerId,
+          hostname: compData.hostname || `PC-${compData.computerId}`,
+          labId: lab.id,
+          benchNumber: String(compData.benchNumber || "0"),
+          ipAddress: compData.ipAddress || `192.168.1.${10 + Math.floor(Math.random() * 200)}`,
+          macAddress: compData.macAddress || `00:0A:95:9D:68:16`,
+          cpu: compData.cpu || "Intel Core i5",
+          motherboard: compData.motherboard || "Gigabyte H610",
+          ramGb: Number(compData.ramGb || 8),
+          ssdGb: Number(compData.ssdGb || 256),
+          hddGb: Number(compData.hddGb || 0),
+          monitorDetails: compData.monitorDetails || "Dell 19.5 Inch",
+          keyboardBrand: compData.keyboardBrand || "Logitech",
+          mouseBrand: compData.mouseBrand || "Logitech",
+          vendorDetails: compData.vendorDetails || "Symbiosis Authorized Vendor",
+          operatingSystem: compData.operatingSystem || "Windows 11 Pro",
+          purchaseDate: compData.purchaseDate ? new Date(compData.purchaseDate) : new Date(),
+          warrantyExpiry: compData.warrantyExpiry ? new Date(compData.warrantyExpiry) : new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000),
+          status: compData.status || "ONLINE",
+          condition: compData.condition || "WORKING",
+          barcode: compData.barcode || compData.computerId,
+          qrCode: compData.qrCode || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${compData.computerId}`,
+        };
+
+        const existing = await tx.computer.findUnique({
+          where: { computerId: payload.computerId }
+        });
+
+        let saved;
+        if (existing) {
+          saved = await tx.computer.update({
+            where: { id: existing.id },
+            data: payload
+          });
+        } else {
+          saved = await tx.computer.create({
+            data: payload
+          });
+        }
+        createdCount.push(saved);
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: safeAuthorId,
+          actionPerformed: `Bulk imported ${createdCount.length} computer records`,
+          tableName: "Computer",
+          recordId: "BULK_IMPORT",
+          updatedValue: JSON.stringify({ count: createdCount.length }),
+          ipAddress: "127.0.0.1",
+          browserAgent: "Server Action Engine"
+        }
+      });
+
+      return createdCount;
+    });
+
+    revalidatePath("/admin/computers");
+    return { success: true, data: results };
+  } catch (e: any) {
+    console.error("importComputers error:", e);
+    return { success: false, error: e.message || "Bulk import failed." };
+  }
+}
