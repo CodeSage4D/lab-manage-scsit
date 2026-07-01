@@ -6,6 +6,30 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 
 ---
 
+## [0.7.0] — 2026-07-01
+
+### Added
+- **`src/app/faculty/page.tsx`**: Complete enterprise-grade redesign of the Faculty Software Requirements Portal.
+  - **Smart Software Extraction Engine**: Paste any free-text document/syllabus content and the system auto-detects all software names, versions, frameworks, and semesters using a 50+ keyword pattern library.
+  - **Per-Software Row Architecture**: Each detected software item creates one individual, editable database row matching the `SoftwareRequest` schema exactly.
+  - **Extraction Preview Panel**: Inline field editors with `needsReview` amber flag for any rows where version couldn't be auto-detected.
+  - **Manual Entry Builder**: Autocomplete dropdown with 15+ common software presets (Python, Java JDK, MySQL, Docker, etc.) with version + framework pre-fill.
+  - **Tab Layout**: Submit Requirements and Track Request Status tabs now independent.
+  - **Branded Print Receipt**: Full SUAS logo, SCSIT header block, and complete software table in printable layout.
+
+### Changed
+- **`src/app/admin/page.tsx`**: SCSIT LabOS branding cleanup.
+  - Removed legacy "ERP" badge from the admin header title.
+  - Updated sidebar section label from "LMS Command Registry" to "SCSIT LabOS · Workspace".
+  - Updated module settings panel heading from "LMS Module Settings" to "SCSIT LabOS · Module Configuration".
+- **`src/components/LmsPanels.tsx`**: Dashboard improvements and SCSIT LabOS branding.
+  - Dashboard stat cards now show contextual sub-labels (e.g., "N operational", "N unique titles", "N open maintenance").
+  - Updated report generation heading from "LMS Departmental Reports" to "SCSIT LabOS · Reports Generation".
+  - Updated print/PDF report footer from "SCSIT LMS" to "SCSIT LabOS · Laboratory Operating System".
+  - Updated print receipt footer to reference SCSIT LabOS instead of SCSIT LMS.
+
+---
+
 ## [0.6.0] — 2026-07-01
 
 ### Added
