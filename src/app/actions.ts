@@ -211,53 +211,58 @@ export async function getComputers(labId?: string): Promise<ServiceResult> {
   }
 }
 
-export async function saveComputer(data: any, authorId: string, ...args: any[]): Promise<ServiceResult> {
+export async function saveComputer(data: any, authorId?: any, ...args: any[]): Promise<ServiceResult> {
   try {
-    const parsed = computerSchema.parse(data);
+    // Strip extra fields that are not in schema (like id, lab, createdAt, updatedAt)
+    const { id, lab, createdAt, updatedAt, ...schemaData } = data;
+
+    // Coerce empty strings to null for optional date fields
+    if (!schemaData.lastServiceDate) schemaData.lastServiceDate = null;
+    if (!schemaData.nextServiceDate) schemaData.nextServiceDate = null;
+    if (!schemaData.installedDate) schemaData.installedDate = null;
+
+    const parsed = computerSchema.parse(schemaData);
+    const safeAuthorId = String(authorId || "system");
 
     const result = await prisma.$transaction(async (tx) => {
-      const existing = await tx.computer.findUnique({
-        where: { computerId: parsed.computerId }
-      });
+      // Determine if update or create
+      const existing = id
+        ? await tx.computer.findUnique({ where: { id } })
+        : await tx.computer.findUnique({ where: { computerId: parsed.computerId } });
 
-      let updatedComp;
+      let savedComp;
       if (existing) {
-        updatedComp = await tx.computer.update({
-          where: { computerId: parsed.computerId },
-          data: parsed
+        savedComp = await tx.computer.update({
+          where: { id: existing.id },
+          data: parsed,
         });
-
         await tx.auditLog.create({
           data: {
-            userId: authorId,
-            actionPerformed: "Update Computer Wkstation specs",
+            userId: safeAuthorId,
+            actionPerformed: "Update Computer Workstation specs",
             tableName: "Computer",
-            recordId: updatedComp.id,
+            recordId: savedComp.id,
             previousValue: JSON.stringify(existing),
-            updatedValue: JSON.stringify(updatedComp),
+            updatedValue: JSON.stringify(savedComp),
             ipAddress: "127.0.0.1",
-            browserAgent: "Server Action Engine"
-          }
+            browserAgent: "Server Action Engine",
+          },
         });
       } else {
-        updatedComp = await tx.computer.create({
-          data: parsed
-        });
-
+        savedComp = await tx.computer.create({ data: parsed });
         await tx.auditLog.create({
           data: {
-            userId: authorId,
-            actionPerformed: "Create Computer Registry entry",
+            userId: safeAuthorId,
+            actionPerformed: "Register New Computer",
             tableName: "Computer",
-            recordId: updatedComp.id,
-            updatedValue: JSON.stringify(updatedComp),
+            recordId: savedComp.id,
+            updatedValue: JSON.stringify(savedComp),
             ipAddress: "127.0.0.1",
-            browserAgent: "Server Action Engine"
-          }
+            browserAgent: "Server Action Engine",
+          },
         });
       }
-
-      return updatedComp;
+      return savedComp;
     });
 
     revalidatePath("/admin/computers");
