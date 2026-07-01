@@ -1126,7 +1126,7 @@ export default function LmsPanels({
             </div>
 
             <div class="footer">
-              Generated dynamically on ${new Date().toLocaleString("en-IN")} via SCSIT LMS.
+              Generated on ${new Date().toLocaleString("en-IN")} via SCSIT LabOS · School of Computer Science &amp; IT
             </div>
           </div>
         </body>
@@ -1247,7 +1247,7 @@ export default function LmsPanels({
           </table>
 
           <div class="footer">
-            SCSIT Modular Laboratory Management System (LMS) - Report Print
+            SCSIT LabOS · Laboratory Operating System — Symbiosis University of Applied Sciences, Indore
           </div>
         </body>
       </html>
@@ -1397,15 +1397,16 @@ export default function LmsPanels({
           {/* Dashboard Summary cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: "Total Labs", val: laboratories.length, bg: "bg-rose-50 dark:bg-rose-950/20 text-suas-ruby", border: "border-rose-100 dark:border-rose-900/20" },
-              { label: "Total Computers", val: laboratories.reduce((sum, l) => sum + (l.total_computers || 0), 0), bg: "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600", border: "border-emerald-100 dark:border-emerald-900/20" },
-              { label: "Installed Softwares", val: labSoftwares.length, bg: "bg-blue-50 dark:bg-blue-950/20 text-blue-600", border: "border-blue-100 dark:border-blue-900/20" },
-              { label: "Pending Requests", val: submissions.filter(s => s.subjects.some(c => c.status === "Pending")).length, bg: "bg-amber-50 dark:bg-amber-950/20 text-amber-600", border: "border-amber-100 dark:border-amber-900/20" }
+              { label: "Active Labs", val: laboratories.length, sub: `${laboratories.filter(l => l.status === "Active").length} operational`, bg: "bg-rose-50 dark:bg-rose-950/20 text-suas-ruby", border: "border-rose-100 dark:border-rose-900/20" },
+              { label: "Total Computers", val: laboratories.reduce((sum, l) => sum + (l.total_computers || 0), 0), sub: `${inventoryItems.length} catalogued`, bg: "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600", border: "border-emerald-100 dark:border-emerald-900/20" },
+              { label: "Installed Software", val: labSoftwares.length, sub: `${Array.from(new Set(labSoftwares.map(s => s.software_name))).length} unique titles`, bg: "bg-blue-50 dark:bg-blue-950/20 text-blue-600", border: "border-blue-100 dark:border-blue-900/20" },
+              { label: "Pending Requests", val: submissions.filter(s => s.subjects.some(c => c.status === "Pending")).length, sub: `${maintenanceLogs.filter(m => m.status !== "Completed").length} open maintenance`, bg: "bg-amber-50 dark:bg-amber-950/20 text-amber-600", border: "border-amber-100 dark:border-amber-900/20" }
             ].map((stat, idx) => (
               <div key={idx} className={`glass-card p-5 border ${stat.border} ${stat.bg} flex items-center justify-between`}>
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">{stat.label}</span>
                   <span className="text-2xl font-black block mt-1">{stat.val}</span>
+                  <span className="text-[9px] text-slate-400 font-semibold block mt-0.5">{stat.sub}</span>
                 </div>
                 <div className="p-3 bg-white/70 dark:bg-zinc-900/60 rounded-xl shadow-sm">
                   {idx === 0 ? <Server size={18} /> : idx === 1 ? <Layers size={18} /> : idx === 2 ? <FileCode size={18} /> : <BookOpen size={18} />}
@@ -1419,9 +1420,9 @@ export default function LmsPanels({
             <div className="lg:col-span-2 glass-card p-6 border border-slate-200/50 dark:border-zinc-800/50 space-y-4">
               <div>
                 <h3 className="text-sm font-black text-slate-805 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                  <FileSpreadsheet size={15} className="text-suas-ruby" /> LMS Departmental Reports Generation
+                  <FileSpreadsheet size={15} className="text-suas-ruby" /> SCSIT LabOS &middot; Reports Generation
                 </h3>
-                <p className="text-[10px] text-slate-455">Download CSV tables formatted for Excel, or open beautifully formatted report sheets print dialogs directly from the client.</p>
+                <p className="text-[10px] text-slate-455">Download Excel tables or print-ready PDF reports for labs, software inventory, maintenance logs, and faculty requests.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

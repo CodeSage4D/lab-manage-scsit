@@ -1585,10 +1585,9 @@ export default function AdminDashboard() {
             <div className="min-w-0">
               <h1 className="text-sm font-black tracking-tight text-slate-800 dark:text-white leading-tight font-display flex items-center gap-1.5 uppercase">
                 <span className="bg-gradient-to-r from-suas-ruby to-rose-500 dark:from-suas-ruby-neon dark:to-rose-400 bg-clip-text text-transparent">SCSIT LabOS</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/30 text-suas-ruby dark:text-suas-ruby-neon font-black">ERP</span>
               </h1>
               <p className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5 truncate max-w-[170px] sm:max-w-none">
-                Laboratory Operating System
+                Laboratory Operating System · Admin Workspace
               </p>
             </div>
           </div>
@@ -1671,7 +1670,7 @@ export default function AdminDashboard() {
           {/* Collapsible Sidebar Navigation Panel */}
           <aside className="lg:col-span-1 space-y-4 no-print text-left">
             <div className="bg-white/80 dark:bg-zinc-950/40 backdrop-blur-xl border border-slate-200/50 dark:border-zinc-900/60 shadow-[0_8px_30px_rgb(0,0,0,0.01)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.25)] rounded-3xl p-5 space-y-4">
-              <h3 className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest block mb-2 px-1">LMS Command Registry</h3>
+              <h3 className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest block mb-2 px-1">SCSIT LabOS · Workspace</h3>
               <nav className="space-y-1.5">
                 {[
                   { id: "reports_dashboard", name: "Dashboard & Reports", icon: <BarChart3 size={14} /> },
@@ -1764,9 +1763,9 @@ export default function AdminDashboard() {
                 {/* Title */}
                 <div>
                   <h3 className="text-sm font-black text-slate-855 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                    <Settings size={15} className="text-suas-ruby" /> LMS Module Settings &amp; Management
+                    <Settings size={15} className="text-suas-ruby" /> SCSIT LabOS · Module Configuration
                   </h3>
-                  <p className="text-[10px] text-slate-455 font-medium">Configure active laboratory modules, general department configurations, scrolling announcements, and administrators.</p>
+                  <p className="text-[10px] text-slate-455 font-medium">Configure active workspace modules, department settings, scrolling announcements, and administrator accounts.</p>
                 </div>
 
                 {/* Module Settings Grid */}
@@ -1956,7 +1955,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
             ) : (
-              /* Render Modular LMS panels */
+              /* Render SCSIT LabOS workspace panels */
               <LmsPanels
                 activeTab={activeTab}
                 departmentDetails={departmentDetails}
