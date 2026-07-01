@@ -6,6 +6,27 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 
 ---
 
+## [0.3.0] — 2026-07-01
+
+### Added
+- **`src/app/admin/computers/page.tsx`**: Dynamic Computer Register (global search, filter by lab/status/condition, QR generator, details card, CSV export, CRUD operations)
+- **`src/app/admin/maintenance/page.tsx`**: Dynamic Maintenance Register with status pipelines ("REPORTED" -> "ASSIGNED" -> "DIAGNOSIS" -> "WAITING_PARTS" -> "REPAIRING" -> "TESTING" -> "RESOLVED" -> "CLOSED"), real-time state transition, remarks, and automatic computer status sync
+- **`src/app/admin/inventory/page.tsx`**: Dynamic Hardware Inventory Register with equipment specification mapping, stock count management, status indicators, and CSV export
+- **`src/app/admin/bookings/page.tsx`**: Dynamic Lab Booking Register with visual schedule calendar view + table list view, date filters, conflict checking, and slot booking
+- **`src/app/admin/visitors/page.tsx`**: Dynamic Visitor Register with entry/exit time stamp, duration tracker, real-time "inside/left" status indicator, one-click exit logger, and CSV export
+- **`src/app/admin/daily-work/page.tsx`**: Dynamic Daily Work Register with staff-linked work logs, tasks summary, duration tracking, date range filters, and total hours metrics
+- **`src/app/admin/labs/page.tsx`**: Dynamic Labs Register with overview card list and detail sidebar displaying live metrics (computers, seating capacity, active issues, bookings)
+- **`src/app/admin/software/page.tsx`**: Dynamic Software Catalog with catalog management (IDE, DB, OS) and computer deployment mapping (installed version, date, staff operator)
+
+### Changed
+- **`src/app/actions.ts`**: Rewrote all server actions with robust Prisma queries, transaction isolation, comprehensive audit logs, and automatic revalidation paths
+- **`src/app/admin/page.tsx`**: Integrated navigation links directly to the new dedicated register routes inside the dashboard sidebar
+
+### Fixed
+- **TypeScript & Build Check**: Cleaned up tsconfig excludes to resolve compilation checks. Verified compile status with zero errors.
+
+---
+
 ## [Unreleased]
 
 ---

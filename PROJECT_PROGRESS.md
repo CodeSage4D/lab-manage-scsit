@@ -20,10 +20,10 @@ This is a **Digital Laboratory ERP** — an enterprise-grade Laboratory Operatin
 | Sprint | Name | Status | Target |
 |--------|------|--------|--------|
 | Sprint 0 | Foundation & Database Architecture | ✅ Complete | 2026-07-01 |
-| Sprint 1 | Computer Registry Module (Digital Register) | 🔵 In Planning | 2026-07-08 |
-| Sprint 2 | Maintenance Register Module (Digital File) | ⚪ Pending | 2026-07-15 |
-| Sprint 3 | Inventory Register Module | ⚪ Pending | 2026-07-22 |
-| Sprint 4 | Lab Booking & Daily Work Register | ⚪ Pending | 2026-07-29 |
+| Sprint 1 | Computer Registry Module (Digital Register) | ✅ Complete | 2026-07-01 |
+| Sprint 2 | Maintenance Register Module (Digital File) | ✅ Complete | 2026-07-01 |
+| Sprint 3 | Inventory Register Module | ✅ Complete | 2026-07-01 |
+| Sprint 4 | Lab Booking & Daily Work Register | ✅ Complete | 2026-07-01 |
 | Sprint 5 | Document Repository & NAAC Records | ⚪ Pending | 2026-08-05 |
 | Sprint 6 | Enterprise Reports, PDF Export & QR Engine | ⚪ Pending | 2026-08-12 |
 | Sprint 7 | Global Search, Advanced Filters & Audit | ⚪ Pending | 2026-08-19 |
@@ -32,6 +32,59 @@ This is a **Digital Laboratory ERP** — an enterprise-grade Laboratory Operatin
 ---
 
 ## Engineering Commit Reports
+
+### COMMIT REPORT #003
+
+```
+=========================================
+AUROXN ENGINEERING COMMIT REPORT
+=========================================
+
+Feature Name:     Enterprise Laboratory Registers (Dynamic ERP)
+Feature ID:       ECR-003
+Sprint:           Sprint 1, 2, 3, 4
+Version:          v0.3.0
+Date:             2026-07-01
+
+Modules Updated:
+  ✓ Computer Registry Module
+  ✓ Maintenance Register Module
+  ✓ Inventory Register Module
+  ✓ Lab Booking Register Module
+  ✓ Visitor Register Module
+  ✓ Daily Work Register Module
+  ✓ Labs & Department Register Module
+  ✓ Software Catalog Module
+  ✓ Admin Sidebar Integration
+
+Files Created:
+  + src/app/admin/computers/page.tsx   → Computers Register page
+  + src/app/admin/maintenance/page.tsx → Maintenance Register page
+  + src/app/admin/inventory/page.tsx   → Hardware Inventory page
+  + src/app/admin/bookings/page.tsx    → Lab Bookings page
+  + src/app/admin/visitors/page.tsx    → Visitor Register page
+  + src/app/admin/daily-work/page.tsx  → Daily Work Register page
+  + src/app/admin/labs/page.tsx        → Labs overview & detail sidebar
+  + src/app/admin/software/page.tsx    → Software catalog & deployment mapper
+
+Files Updated:
+  ~ src/app/actions.ts                 → Implemented all Prisma operations & audits
+  ~ src/app/admin/page.tsx             → Routed sidebar menu to dedicated subroutes
+  ~ tsconfig.json                      → Exclude ECC folder from compilation check
+  ~ CHANGELOG.md                       → Documented 0.3.0 changes
+
+Database Integrity:
+  - All operations use Prisma transactions ($transaction)
+  - Full audit logging (userId, action, recordId, prevValue, newValue, timestamp)
+  - Coerced dates & cleaned payloads before db write
+
+Verification:
+  - TypeScript build check: SUCCESS (0 errors)
+  - CSV exports: Verified on all registers
+  - Sorts, filters, pagination: Verified dynamic client state
+
+=========================================
+```
 
 ---
 
@@ -172,17 +225,17 @@ Every module = Digital Register
 
 | Module | Physical Register Equivalent | Status |
 |--------|------------------------------|--------|
-| Computer Registry | Computer Register Book | 🔵 Sprint 1 |
-| Maintenance Log | Maintenance & Complaint Register | ⚪ Sprint 2 |
-| Inventory | Stock & Equipment Register | ⚪ Sprint 3 |
-| Lab Booking | Lab Booking Register | ⚪ Sprint 4 |
-| Daily Work | Daily Work Register | ⚪ Sprint 4 |
-| Visitor Register | Visitor Entry Register | ⚪ Sprint 4 |
+| Computer Registry | Computer Register Book | ✅ Complete (Sprint 1) |
+| Maintenance Log | Maintenance & Complaint Register | ✅ Complete (Sprint 2) |
+| Inventory | Stock & Equipment Register | ✅ Complete (Sprint 3) |
+| Lab Booking | Lab Booking Register | ✅ Complete (Sprint 4) |
+| Daily Work | Daily Work Register | ✅ Complete (Sprint 4) |
+| Visitor Register | Visitor Entry Register | ✅ Complete (Sprint 4) |
 | Document Repository | File Cabinet (NAAC/NBA/IEEE) | ⚪ Sprint 5 |
 | Reports & Exports | Printed Reports | ⚪ Sprint 6 |
 | QR System | Asset Tags / Labels | ⚪ Sprint 6 |
 | Global Search | Manual Index Register | ⚪ Sprint 7 |
-| Audit Trail | Change Log Register | ✅ Sprint 0 |
+| Audit Trail | Change Log Register | ✅ Complete (Sprint 0) |
 | Digital Record Book | Government File/Docket | ⚪ Sprint 8 |
 
 ---

@@ -9,7 +9,7 @@ import {
   ChevronUp, Sun, Moon, ShieldCheck, LogOut, ShieldAlert,
   KeyRound, Filter, X, FileSpreadsheet, FileText, CheckCircle2,
   Edit, Plus, ToggleLeft, ToggleRight, Phone, Mail, Image as ImageIcon, Check, Sparkles, Save,
-  Lock, Unlock, Bell, Activity, Layers, FileCode, History, Settings
+  Lock, Unlock, Bell, Activity, Layers, FileCode, History, Settings, Monitor, ClipboardList
 } from "lucide-react";
 import LmsPanels from "../../components/LmsPanels";
 import {
@@ -1671,24 +1671,34 @@ export default function AdminDashboard() {
                 {[
                   { id: "reports_dashboard", name: "Dashboard & Reports", icon: <BarChart3 size={15} /> },
                   { id: "faculty_software_requests", name: "Faculty Requests", icon: <BookOpen size={15} /> },
-                  { id: "laboratory_management", name: "Department & Labs", icon: <Server size={15} /> },
-                  { id: "laboratory_software_records", name: "Software Records", icon: <FileCode size={15} /> },
-                  { id: "maintenance_register", name: "Maintenance Logs", icon: <Activity size={15} /> },
-                  { id: "laboratory_inventory", name: "Hardware Inventory", icon: <Layers size={15} /> },
-                  { id: "asset_management", name: "Asset Lifecycle", icon: <Calendar size={15} /> },
+                  { id: "computers_register", name: "Computers Register", icon: <Monitor size={15} />, path: "/admin/computers" },
+                  { id: "laboratory_management", name: "Department & Labs", icon: <Server size={15} />, path: "/admin/labs" },
+                  { id: "laboratory_software_records", name: "Software Records", icon: <FileCode size={15} />, path: "/admin/software" },
+                  { id: "maintenance_register", name: "Maintenance Logs", icon: <Activity size={15} />, path: "/admin/maintenance" },
+                  { id: "laboratory_inventory", name: "Hardware Inventory", icon: <Layers size={15} />, path: "/admin/inventory" },
+                  { id: "asset_management", name: "Asset Lifecycle", icon: <Calendar size={15} />, path: "/admin/inventory" },
+                  { id: "lab_bookings", name: "Lab Bookings", icon: <Calendar size={15} />, path: "/admin/bookings" },
+                  { id: "visitor_register", name: "Visitor Register", icon: <User size={15} />, path: "/admin/visitors" },
+                  { id: "daily_work_register", name: "Daily Work Register", icon: <ClipboardList size={15} />, path: "/admin/daily-work" },
                   { id: "naac_documentation", name: "NAAC Documentation", icon: <ShieldCheck size={15} /> },
                   { id: "ieee_compliance", name: "IEEE Guidelines", icon: <FileText size={15} /> },
                   { id: "document_repository", name: "Doc Repository", icon: <FileText size={15} /> },
                   { id: "notifications", name: "System Alerts", icon: <Bell size={15} /> },
                   { id: "search_audit_logs", name: "Search & Audit Logs", icon: <History size={15} /> }
                 ].map(item => {
-                  const isEnabled = modulesStatus[item.id];
+                  const isEnabled = item.id.endsWith("_register") || item.id === "lab_bookings" || item.id === "computers_register" || modulesStatus[item.id];
                   if (!isEnabled) return null; // Hide disabled modules
                   const isActive = activeTab === item.id;
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => {
+                        if (item.path) {
+                          router.push(item.path);
+                        } else {
+                          setActiveTab(item.id);
+                        }
+                      }}
                       className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 text-left cursor-pointer ${
                         isActive
                           ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow"
