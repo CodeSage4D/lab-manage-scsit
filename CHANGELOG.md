@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 
 ---
 
+## [0.5.1] — 2026-07-01
+
+### Fixed
+- **`src/app/actions.ts`**: Included `isPinSet` in `verifyAdminLogin` payload and updated `setupAdminPIN` to support looking up users by UUID, resolving the infinite passcode registration redirect loop.
+
+---
+
 ## [0.5.0] — 2026-07-01
 
 ### Added
