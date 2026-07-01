@@ -11,6 +11,7 @@ import {
   getMaintenanceLogs, getLaboratories, getComputers,
   saveMaintenanceLog, updateMaintenanceStatus, deleteMaintenanceLog
 } from "../../actions";
+import { exportToExcel } from "../../../utils/exportHelper";
 
 const STATUSES = ["REPORTED","ASSIGNED","DIAGNOSIS","WAITING_PARTS","REPAIRING","TESTING","RESOLVED","CLOSED"] as const;
 type MaintStatus = typeof STATUSES[number];
@@ -133,17 +134,15 @@ export default function MaintenanceRegister() {
     else showToast(res.error || "Delete failed.", "error");
   };
 
-  const exportCSV = () => {
-    const h = ["Ticket ID","Lab","Computer","PC No","Issue","Technician","Status","Reported","Completed","Remarks"];
+  const exportExcel = () => {
+    const headers = ["Ticket ID","Lab","Computer","PC No","Issue","Technician","Status","Reported","Completed","Remarks"];
     const rows = filtered.map(l => [
       l.maintenanceId, l.lab?.name||"", l.computer?.computerId||"", l.pcNumber,
       l.issueDescription, l.technicianName, l.status,
       l.reportedDate?.slice(0,10), l.completionDate?.slice(0,10)||"", l.remarks||""
-    ].map(v=>`"${v}"`).join(","));
-    const blob = new Blob([[h.join(","), ...rows].join("\n")], {type:"text/csv"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href=url; a.download=`Maintenance-${new Date().toISOString().slice(0,10)}.csv`; a.click();
-    URL.revokeObjectURL(url); showToast("CSV exported.");
+    ]);
+    exportToExcel(rows, headers, "Maintenance Register", "SCSIT_Maintenance_Logs");
+    showToast("Excel sheet exported successfully.");
   };
 
   const labComputers = useMemo(() => computers.filter(c => c.labId === form.labId), [computers, form.labId]);
@@ -264,7 +263,7 @@ export default function MaintenanceRegister() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={fetchData} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-400 transition"><RefreshCw size={15}/></button>
-            <button onClick={exportCSV} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/> CSV</button>
+            <button onClick={exportExcel} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/> Excel</button>
             <button onClick={()=>{setEditingId(null);setForm(EMPTY_FORM);setShowForm(true);}}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition">
               <Plus size={14}/> File Ticket

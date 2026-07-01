@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Plus, Search, Trash2, Edit2, RefreshCw, ArrowLeft, CheckCircle, AlertTriangle, Loader2, Check, X, FileSpreadsheet, ChevronLeft, ChevronRight } from "lucide-react";
 import { getLabBookings, getLaboratories, getAdmins, saveLabBooking, deleteLabBooking } from "../../actions";
+import { exportToExcel } from "../../../utils/exportHelper";
 
 const TIME_SLOTS = ["08:00 - 09:00","09:00 - 10:00","10:00 - 11:00","11:00 - 12:00","12:00 - 13:00","13:00 - 14:00","14:00 - 15:00","15:00 - 16:00","16:00 - 17:00","17:00 - 18:00"];
 
@@ -76,12 +77,13 @@ export default function LabBookings() {
     else showToast(res.error||"Failed.","error");
   };
 
-  const exportCSV = () => {
-    const h = ["Lab","Faculty","Subject","Semester","Time Slot","Date","Students","Status"];
-    const rows = filtered.map(b=>[b.lab?.name||"",b.facultyName,b.subjectName,b.semester,b.timeSlot,b.bookingDate?.slice(0,10),b.studentCount,b.approvalStatus].map(v=>`"${v}"`).join(","));
-    const blob = new Blob([[h.join(","),...rows].join("\n")],{type:"text/csv"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Bookings-${new Date().toISOString().slice(0,10)}.csv`;a.click();
-    showToast("CSV exported.");
+  const exportExcel = () => {
+    const headers = ["Lab","Faculty","Subject","Semester","Time Slot","Date","Students","Status"];
+    const rows = filtered.map(b => [
+      b.lab?.name||"", b.facultyName, b.subjectName, b.semester, b.timeSlot, b.bookingDate?.slice(0,10), b.studentCount, b.approvalStatus
+    ]);
+    exportToExcel(rows, headers, "Lab Bookings", "SCSIT_Lab_Bookings");
+    showToast("Excel sheet exported successfully.");
   };
 
   // Calendar view: group by lab and time slot for a given date
@@ -154,7 +156,7 @@ export default function LabBookings() {
               <button onClick={()=>setViewMode("table")} className={`px-3 py-1.5 rounded text-xs font-medium transition ${viewMode==="table"?"bg-zinc-700 text-zinc-100":"text-zinc-400"}`}>Table</button>
               <button onClick={()=>setViewMode("calendar")} className={`px-3 py-1.5 rounded text-xs font-medium transition ${viewMode==="calendar"?"bg-zinc-700 text-zinc-100":"text-zinc-400"}`}>Schedule</button>
             </div>
-            <button onClick={exportCSV} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/>CSV</button>
+            <button onClick={exportExcel} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/>Excel</button>
             <button onClick={()=>{setEditingId(null);setForm({...EMPTY_FORM,bookingDate:new Date().toISOString().slice(0,10)});setShowForm(true);}} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition"><Plus size={14}/>Book Lab</button>
           </div>
         </div>

@@ -6,6 +6,7 @@ import {
   CheckCircle, AlertTriangle, Loader2, Check, X, FileSpreadsheet, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { getInventory, getLaboratories, saveInventoryItem, deleteInventoryItem } from "../../actions";
+import { exportToExcel } from "../../../utils/exportHelper";
 
 const ASSET_TYPES = ["RAM","SSD","HDD","Mouse","Keyboard","Monitor","UPS","Switch","Router","Printer","Projector","Webcam","RJ45 Cable","Patch Panel","Other"];
 const STATUS_OPTS = ["AVAILABLE","ISSUED","STOCK","RETURNED","DEPLETED"];
@@ -88,12 +89,13 @@ export default function InventoryRegister() {
     else showToast(res.error||"Failed.","error");
   };
 
-  const exportCSV = () => {
-    const h = ["Asset No","Device Type","Lab","Vendor","Status","Stock","Purchase Date","Warranty"];
-    const rows = filtered.map(i => [i.assetNumber,i.deviceType,i.lab?.name||"",i.vendorDetails||"",i.status,i.stockCount,i.purchaseDate?.slice(0,10),i.warrantyDetails||""].map(v=>`"${v}"`).join(","));
-    const blob = new Blob([[h.join(","),...rows].join("\n")],{type:"text/csv"});
-    const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`Inventory-${new Date().toISOString().slice(0,10)}.csv`; a.click();
-    showToast("CSV exported.");
+  const exportExcel = () => {
+    const headers = ["Asset No","Device Type","Lab","Vendor","Status","Stock","Purchase Date","Warranty"];
+    const rows = filtered.map(i => [
+      i.assetNumber, i.deviceType, i.lab?.name||"", i.vendorDetails||"", i.status, i.stockCount, i.purchaseDate?.slice(0,10), i.warrantyDetails||""
+    ]);
+    exportToExcel(rows, headers, "Hardware Inventory", "SCSIT_Hardware_Inventory");
+    showToast("Excel sheet exported successfully.");
   };
 
   return (
@@ -197,7 +199,7 @@ export default function InventoryRegister() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={fetchData} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-400 transition"><RefreshCw size={15}/></button>
-            <button onClick={exportCSV} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/>CSV</button>
+            <button onClick={exportExcel} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/>Excel</button>
             <button onClick={()=>{setEditingId(null);setForm(EMPTY_FORM);setShowForm(true);}} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition"><Plus size={14}/>Add Item</button>
           </div>
         </div>

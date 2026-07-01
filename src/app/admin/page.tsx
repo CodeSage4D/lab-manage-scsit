@@ -1565,40 +1565,43 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* ── Fixed header with session details ── */}
-      <header className="glass-header sticky top-0 z-40 no-print">
-        <div className="h-[95px] max-w-7xl mx-auto px-4 md:px-8 flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
+      {/* ── Futuristic floating header navigation ── */}
+      <header className="sticky top-0 z-40 no-print bg-white/70 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-zinc-900/50 transition-all duration-300 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_30px_rgba(0,0,0,0.3)]">
+        <div className="h-[80px] max-w-7xl mx-auto px-4 md:px-8 flex items-center justify-between">
+          <div className="flex items-center gap-4">
             <a href="/"
-              className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 text-slate-500 hover:text-suas-ruby dark:hover:text-suas-ruby-neon transition"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900/50 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 hover:text-suas-ruby dark:hover:text-suas-ruby-neon transition duration-200 flex items-center justify-center"
               title="Return to Faculty Portal">
               <ArrowLeft size={16} />
             </a>
-            <img
-              src="/img/symbiosis-university-of-applied-sciences-logo.jpg"
-              alt="SUAS Logo"
-              className="w-9 h-9 sm:w-11 sm:h-11 object-contain rounded bg-white hidden sm:block shrink-0"
-            />
+            <div className="relative group shrink-0 hidden sm:block">
+              <div className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-suas-ruby to-violet-600 opacity-20 group-hover:opacity-40 transition duration-300 blur-sm" />
+              <img
+                src="/img/symbiosis-university-of-applied-sciences-logo.jpg"
+                alt="SUAS Logo"
+                className="w-10 h-10 object-contain rounded-xl bg-white shrink-0 relative border border-slate-200/20"
+              />
+            </div>
             <div className="min-w-0">
-              <h1 className="text-xs sm:text-sm font-black tracking-tight text-slate-800 dark:text-white leading-tight font-display flex items-center gap-1.5">
-                <ShieldCheck className="text-suas-ruby dark:text-suas-ruby-neon shrink-0" size={15} />
-                <span className="truncate max-w-[140px] sm:max-w-none">SCSIT Admin Dashboard</span>
+              <h1 className="text-sm font-black tracking-tight text-slate-800 dark:text-white leading-tight font-display flex items-center gap-1.5 uppercase">
+                <span className="bg-gradient-to-r from-suas-ruby to-rose-500 dark:from-suas-ruby-neon dark:to-rose-400 bg-clip-text text-transparent">SCSIT LabOS</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/30 text-suas-ruby dark:text-suas-ruby-neon font-black">ERP</span>
               </h1>
-              <p className="text-[8px] sm:text-[9px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5 truncate max-w-[170px] sm:max-w-none">
-                Role-Based Resource &amp; Software Tracking
+              <p className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5 truncate max-w-[170px] sm:max-w-none">
+                Laboratory Operating System
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             {/* Session selector dropdown */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-150/40 dark:border-rose-900/30 rounded-xl">
-              <span className="text-[9px] font-extrabold text-suas-ruby dark:text-suas-ruby-neon uppercase tracking-wider hidden sm:block">Session:</span>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-zinc-900/50 border border-slate-200/40 dark:border-zinc-800/40 rounded-xl hover:border-rose-300/45 dark:hover:border-rose-900/40 transition duration-200">
+              <span className="text-[9px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden sm:block">Session:</span>
               <select
                 value={activeSession}
                 onChange={(e) => handleSessionChange(e.target.value)}
-                className="bg-transparent text-xs font-black text-slate-800 dark:text-slate-200 outline-none cursor-pointer border-none p-0 pr-4 appearance-none relative"
-                style={{ backgroundImage: 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 20 20\' fill=\'none\'%3E%3Cpath d=\'M7 9l3 3 3-3\' stroke=\'%23e11d48\' stroke-width=\'1.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'/%3E%3C/svg%3E")', backgroundPosition: 'right center', backgroundRepeat: 'no-repeat', backgroundSize: '1rem' }}
+                className="bg-transparent text-[11px] font-extrabold text-slate-800 dark:text-slate-200 outline-none cursor-pointer border-none p-0 pr-4 appearance-none relative focus:ring-0"
+                style={{ backgroundImage: 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 20 20\' fill=\'none\'%3E%3Cpath d=\'M7 9l3 3 3-3\' stroke=\'%23e11d48\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'/%3E%3C/svg%3E")', backgroundPosition: 'right center', backgroundRepeat: 'no-repeat', backgroundSize: '0.8rem' }}
               >
                 <option value="July-Dec 2026">July-Dec 2026</option>
                 <option value="Jan-Jun 2027">Jan-Jun 2027</option>
@@ -1612,32 +1615,34 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setShowProfileModal(true)}
                 title="Edit your profile details"
-                className="hidden md:flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800 rounded-xl hover:border-suas-ruby/40 transition text-left"
+                className="hidden md:flex items-center gap-2.5 px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-900/30 dark:hover:bg-zinc-900/60 border border-slate-200/45 dark:border-zinc-800/40 rounded-xl transition duration-200 text-left hover:scale-[1.01]"
               >
                 {activeAdmin.profile_photo ? (
-                  <img src={activeAdmin.profile_photo} alt="P" className="w-8 h-8 rounded-full object-cover border border-slate-200" />
+                  <img src={activeAdmin.profile_photo} alt="P" className="w-7 h-7 rounded-full object-cover border border-slate-200/30" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-rose-50 dark:bg-rose-950/20 text-suas-ruby font-bold text-xs flex items-center justify-center border border-rose-100">
+                  <div className="w-7 h-7 rounded-full bg-rose-50 dark:bg-rose-950/20 text-suas-ruby font-bold text-xs flex items-center justify-center border border-rose-100/40">
                     {activeAdmin.name.charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="text-[11px] font-black text-slate-800 dark:text-white leading-tight truncate max-w-[120px]">{activeAdmin.name}</p>
-                  <p className="text-[9px] font-bold text-suas-ruby dark:text-suas-ruby-neon uppercase tracking-wide leading-none mt-0.5">{activeAdmin.role}</p>
+                  <p className="text-[11px] font-black text-slate-800 dark:text-zinc-200 leading-tight truncate max-w-[120px]">{activeAdmin.name}</p>
+                  <p className="text-[8px] font-black text-suas-ruby dark:text-suas-ruby-neon uppercase tracking-wider leading-none mt-0.5">{activeAdmin.role}</p>
                 </div>
               </button>
             )}
 
+            <div className="h-5 w-px bg-slate-200 dark:bg-zinc-800 mx-1 hidden sm:block" />
+
             <button onClick={toggleTheme} title="Toggle Theme"
-              className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-850 transition">
+              className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-900/40 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200 transition duration-200 hover:scale-105">
               {theme === "light" ? <Moon size={15} /> : <Sun size={15} />}
             </button>
             <button onClick={fetchData} title="Sync Database"
-              className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-850 transition">
+              className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-900/40 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200 transition duration-200 hover:scale-105">
               <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
             <button onClick={handleLogout} title="Logout"
-              className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition">
+              className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 border border-rose-200/30 dark:border-rose-900/30 text-rose-600 hover:text-rose-500 transition duration-200 hover:scale-105">
               <LogOut size={15} />
             </button>
           </div>
@@ -1665,30 +1670,30 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Collapsible Sidebar Navigation Panel */}
           <aside className="lg:col-span-1 space-y-4 no-print text-left">
-            <div className="glass-card p-5 border border-slate-205 dark:border-zinc-800/80 bg-white/70 dark:bg-zinc-900/30">
-              <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">LMS System Modules</h3>
+            <div className="bg-white/80 dark:bg-zinc-950/40 backdrop-blur-xl border border-slate-200/50 dark:border-zinc-900/60 shadow-[0_8px_30px_rgb(0,0,0,0.01)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.25)] rounded-3xl p-5 space-y-4">
+              <h3 className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest block mb-2 px-1">LMS Command Registry</h3>
               <nav className="space-y-1.5">
                 {[
-                  { id: "reports_dashboard", name: "Dashboard & Reports", icon: <BarChart3 size={15} /> },
-                  { id: "faculty_software_requests", name: "Faculty Requests", icon: <BookOpen size={15} /> },
-                  { id: "computers_register", name: "Computers Register", icon: <Monitor size={15} />, path: "/admin/computers" },
-                  { id: "laboratory_management", name: "Department & Labs", icon: <Server size={15} />, path: "/admin/labs" },
-                  { id: "laboratory_software_records", name: "Software Records", icon: <FileCode size={15} />, path: "/admin/software" },
-                  { id: "maintenance_register", name: "Maintenance Logs", icon: <Activity size={15} />, path: "/admin/maintenance" },
-                  { id: "laboratory_inventory", name: "Hardware Inventory", icon: <Layers size={15} />, path: "/admin/inventory" },
-                  { id: "asset_management", name: "Asset Lifecycle", icon: <Calendar size={15} />, path: "/admin/inventory" },
-                  { id: "lab_bookings", name: "Lab Bookings", icon: <Calendar size={15} />, path: "/admin/bookings" },
-                  { id: "visitor_register", name: "Visitor Register", icon: <User size={15} />, path: "/admin/visitors" },
-                  { id: "daily_work_register", name: "Daily Work Register", icon: <ClipboardList size={15} />, path: "/admin/daily-work" },
-                  { id: "staff_workspace", name: "Staff Profile Workspace", icon: <Users size={15} />, path: "/admin/staff" },
-                  { id: "naac_documentation", name: "NAAC Documentation", icon: <ShieldCheck size={15} /> },
-                  { id: "ieee_compliance", name: "IEEE Guidelines", icon: <FileText size={15} /> },
-                  { id: "document_repository", name: "Doc Repository", icon: <FileText size={15} /> },
-                  { id: "notifications", name: "System Alerts", icon: <Bell size={15} /> },
-                  { id: "search_audit_logs", name: "Search & Audit Logs", icon: <History size={15} /> }
+                  { id: "reports_dashboard", name: "Dashboard & Reports", icon: <BarChart3 size={14} /> },
+                  { id: "faculty_software_requests", name: "Faculty Requests", icon: <BookOpen size={14} /> },
+                  { id: "computers_register", name: "Computers Register", icon: <Monitor size={14} />, path: "/admin/computers" },
+                  { id: "laboratory_management", name: "Department & Labs", icon: <Server size={14} />, path: "/admin/labs" },
+                  { id: "laboratory_software_records", name: "Software Records", icon: <FileCode size={14} />, path: "/admin/software" },
+                  { id: "maintenance_register", name: "Maintenance Logs", icon: <Activity size={14} />, path: "/admin/maintenance" },
+                  { id: "laboratory_inventory", name: "Hardware Inventory", icon: <Layers size={14} />, path: "/admin/inventory" },
+                  { id: "asset_management", name: "Asset Lifecycle", icon: <Calendar size={14} />, path: "/admin/inventory" },
+                  { id: "lab_bookings", name: "Lab Bookings", icon: <Calendar size={14} />, path: "/admin/bookings" },
+                  { id: "visitor_register", name: "Visitor Register", icon: <User size={14} />, path: "/admin/visitors" },
+                  { id: "daily_work_register", name: "Daily Work Register", icon: <ClipboardList size={14} />, path: "/admin/daily-work" },
+                  { id: "staff_workspace", name: "Staff Profile Workspace", icon: <Users size={14} />, path: "/admin/staff" },
+                  { id: "naac_documentation", name: "NAAC Documentation", icon: <ShieldCheck size={14} /> },
+                  { id: "ieee_compliance", name: "IEEE Guidelines", icon: <FileText size={14} /> },
+                  { id: "document_repository", name: "Doc Repository", icon: <FileText size={14} /> },
+                  { id: "notifications", name: "System Alerts", icon: <Bell size={14} /> },
+                  { id: "search_audit_logs", name: "Search & Audit Logs", icon: <History size={14} /> }
                 ].map(item => {
                   const isEnabled = item.id.endsWith("_register") || item.id === "lab_bookings" || item.id === "computers_register" || item.id === "staff_workspace" || modulesStatus[item.id];
-                  if (!isEnabled) return null; // Hide disabled modules
+                  if (!isEnabled) return null;
                   const isActive = activeTab === item.id;
                   return (
                     <button
@@ -1700,13 +1705,15 @@ export default function AdminDashboard() {
                           setActiveTab(item.id);
                         }
                       }}
-                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 text-left cursor-pointer ${
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-[11px] font-black uppercase tracking-wider rounded-2xl transition-all duration-200 text-left cursor-pointer border ${
                         isActive
-                          ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow"
-                          : "text-slate-550 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-900"
+                          ? "bg-rose-500/10 text-rose-500 border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/30 shadow-[0_4px_20px_rgba(225,29,72,0.05)] scale-[1.01]"
+                          : "text-slate-550 border-transparent dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-900/40 hover:border-slate-200/40 dark:hover:border-zinc-850/40"
                       }`}
                     >
-                      {item.icon}
+                      <span className={`transition-transform duration-200 ${isActive ? "scale-110 text-suas-ruby dark:text-suas-ruby-neon" : ""}`}>
+                        {item.icon}
+                      </span>
                       <span>{item.name}</span>
                     </button>
                   );
@@ -1715,13 +1722,13 @@ export default function AdminDashboard() {
                 {/* Module Settings (always visible) */}
                 <button
                   onClick={() => setActiveTab("module_settings")}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 mt-4 border border-dashed text-left cursor-pointer ${
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-[11px] font-black uppercase tracking-wider rounded-2xl transition-all duration-200 mt-4 border border-dashed text-left cursor-pointer ${
                     activeTab === "module_settings"
-                      ? "bg-slate-900 text-white border-transparent dark:bg-white dark:text-slate-900 shadow"
-                      : "text-slate-550 border-slate-200 dark:border-zinc-850 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-900"
+                      ? "bg-rose-500/10 text-rose-500 border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/30 shadow-[0_4px_20px_rgba(225,29,72,0.05)] scale-[1.01]"
+                      : "text-slate-500 border-slate-200/50 hover:border-rose-200/45 dark:border-zinc-850 dark:text-slate-450 hover:bg-slate-50 dark:hover:bg-zinc-900/40"
                   }`}
                 >
-                  <Settings size={15} />
+                  <Settings size={14} className={activeTab === "module_settings" ? "text-suas-ruby dark:text-suas-ruby-neon" : ""} />
                   <span>Module Settings</span>
                 </button>
               </nav>

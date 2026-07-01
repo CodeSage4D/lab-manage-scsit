@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { UserCheck, Plus, Search, Trash2, Edit2, RefreshCw, ArrowLeft, CheckCircle, AlertTriangle, Loader2, Check, X, FileSpreadsheet, ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import { getVisitors, saveVisitor, markVisitorExit, deleteVisitor } from "../../actions";
+import { exportToExcel } from "../../../utils/exportHelper";
 
 interface Visitor { id:string;visitorName:string;purpose:string;entryTime:string;exitTime?:string;approvedBy:string; }
 const EMPTY_FORM = { visitorName:"", purpose:"", approvedBy:"", entryTime:"", exitTime:"" };
@@ -69,16 +70,15 @@ export default function VisitorRegister() {
     else showToast(res.error||"Failed.","error");
   };
 
-  const exportCSV = () => {
-    const h = ["Visitor Name","Purpose","Approved By","Entry Time","Exit Time","Duration"];
-    const rows = filtered.map(v=>{
+  const exportExcel = () => {
+    const headers = ["Visitor Name","Purpose","Approved By","Entry Time","Exit Time","Duration"];
+    const rows = filtered.map(v => {
       const entry = new Date(v.entryTime); const exit = v.exitTime?new Date(v.exitTime):null;
       const dur = exit ? `${Math.round((exit.getTime()-entry.getTime())/60000)} min` : "Still inside";
-      return [v.visitorName,v.purpose,v.approvedBy,v.entryTime?.slice(0,16),v.exitTime?.slice(0,16)||"–",dur].map(x=>`"${x}"`).join(",");
+      return [v.visitorName, v.purpose, v.approvedBy, v.entryTime?.slice(0,16), v.exitTime?.slice(0,16)||"–", dur];
     });
-    const blob=new Blob([[h.join(","),...rows].join("\n")],{type:"text/csv"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Visitors-${new Date().toISOString().slice(0,10)}.csv`;a.click();
-    showToast("CSV exported.");
+    exportToExcel(rows, headers, "Visitors Register", "SCSIT_Visitors_Register");
+    showToast("Excel sheet exported successfully.");
   };
 
   return (
@@ -134,7 +134,7 @@ export default function VisitorRegister() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={fetchData} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-400 transition"><RefreshCw size={15}/></button>
-            <button onClick={exportCSV} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/>CSV</button>
+            <button onClick={exportExcel} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/>Excel</button>
             <button onClick={()=>{setEditingId(null);setForm({...EMPTY_FORM,entryTime:new Date().toISOString().slice(0,16)});setShowForm(true);}} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition"><Plus size={14}/>Record Entry</button>
           </div>
         </div>

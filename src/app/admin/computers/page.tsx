@@ -19,6 +19,7 @@ import {
   getComputerByTag,
   importComputers,
 } from "../../actions";
+import { exportToExcel } from "../../../utils/exportHelper";
 
 /* ─── Types ──────────────────────────────────────────────────────────────────── */
 interface Lab { id: string; name: string; code: string; building: string; floor: string; }
@@ -436,24 +437,17 @@ export default function ComputerRegistry() {
     else showToast(res.error || "Delete failed.", "error");
   };
 
-  /* ─── Export CSV ─────────── */
-  const exportCSV = () => {
+  /* ─── Export Excel ─────────── */
+  const exportExcel = () => {
     const headers = ["Computer ID","Hostname","Lab","Bench","IP","MAC","CPU","RAM (GB)","SSD (GB)","HDD (GB)","OS","Status","Condition","Vendor","Purchase Date","Warranty Expiry","Remarks"];
     const rows = filtered.map(c => [
       c.computerId, c.hostname, c.lab?.name || c.labId, c.benchNumber,
       c.ipAddress, c.macAddress, c.cpu, c.ramGb, c.ssdGb, c.hddGb,
       c.operatingSystem, c.status, c.condition, c.vendorDetails,
       c.purchaseDate?.slice(0,10), c.warrantyExpiry?.slice(0,10), c.remarks || ""
-    ].map(v => `"${v}"`).join(","));
-    const csv = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Computer-Registry-${new Date().toISOString().slice(0,10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    showToast("CSV exported successfully.");
+    ]);
+    exportToExcel(rows, headers, "Computers Register", "SCSIT_Computer_Registry");
+    showToast("Excel sheet exported successfully.");
   };
 
   /* ─── Stats ──────────────── */
@@ -1071,10 +1065,10 @@ export default function ComputerRegistry() {
               <RefreshCw size={15} />
             </button>
             <button
-              onClick={exportCSV}
-              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"
+              onClick={exportExcel}
+              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-805 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"
             >
-              <FileSpreadsheet size={14} /> Export CSV
+              <FileSpreadsheet size={14} /> Export Excel
             </button>
             <button
               onClick={openAdd}

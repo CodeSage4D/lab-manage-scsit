@@ -1020,45 +1020,59 @@ export async function getSubmissions(): Promise<ServiceResult> {
       orderBy: { createdAt: "desc" }
     });
 
-    const mapped = list.map((req, idx) => {
+    // Group by faculty email and 1-minute window
+    const grouped: Record<string, typeof list> = {};
+    list.forEach(req => {
+      const timeBucket = new Date(req.createdAt).toISOString().slice(0, 16);
+      const key = `${req.facultyEmail}_${timeBucket}`;
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(req);
+    });
+
+    const mapped = Object.entries(grouped).map(([key, reqs], idx) => {
+      const first = reqs[0];
       let status: "Pending" | "In Progress" | "Installed" = "Pending";
-      if (req.status === "Approved" || req.status === "In Progress" || req.status === "ASSIGNED" || req.status === "DIAGNOSIS" || req.status === "REPAIRING" || req.status === "TESTING") {
-        status = "In Progress";
-      } else if (req.status === "Installed" || req.status === "Closed" || req.status === "RESOLVED") {
+      if (reqs.some(r => r.status === "Installed" || r.status === "Closed" || r.status === "RESOLVED")) {
         status = "Installed";
+      } else if (reqs.some(r => r.status === "Approved" || r.status === "In Progress" || r.status === "ASSIGNED" || r.status === "DIAGNOSIS" || r.status === "REPAIRING" || r.status === "TESTING")) {
+        status = "In Progress";
       }
 
+      const softwaresList = reqs.map(r => ({
+        id: r.id,
+        semester: r.semester,
+        softwareName: r.software.name,
+        version: r.installDetails
+      }));
+
       const classItem = {
-        id: req.id,
+        id: first.id,
         subjectCode: "REQ-" + (idx + 1),
-        subjectName: req.subjectName,
-        semesters: [req.semester],
-        softwares: [{
-          id: req.id,
-          semester: req.semester,
-          softwareName: req.software.name,
-          version: req.installDetails
-        }],
-        softwareName: req.software.name,
-        softwareVersion: req.installDetails,
+        subjectName: "Faculty Consolidated Software Request",
+        semesters: Array.from(new Set(reqs.map(r => r.semester))),
+        softwares: softwaresList,
+        softwareName: reqs.map(r => r.software.name).join(", "),
+        softwareVersion: reqs.map(r => r.installDetails).join("; "),
         framework: "",
         labSelection: null,
         status,
-        remarks: req.installDetails,
-        licenseType: req.software.licenseDetails || "FOSS"
+        remarks: reqs.map(r => `${r.software.name}: ${r.installDetails}`).join(" | "),
+        licenseType: "Mixed / FOSS"
       };
 
       return {
         id: idx + 1,
-        submissionId: req.id.slice(0, 8).toUpperCase(),
-        facultyName: req.facultyName,
-        facultyEmail: req.facultyEmail,
+        submissionId: first.id.slice(0, 8).toUpperCase(),
+        facultyName: first.facultyName,
+        facultyEmail: first.facultyEmail,
         facultyMobile: "9999999999",
         department: "SCSIT",
-        semester: req.semester,
+        semester: first.semester,
         subjects: [classItem],
         signatureData: "",
-        createdAt: req.createdAt.toISOString()
+        createdAt: first.createdAt.toISOString()
       };
     });
 
@@ -1124,12 +1138,129 @@ export async function getImportLogs(...args: any[]): Promise<ServiceResult> {
   return { success: true, data: [] };
 }
 
-export async function submitForm(data: any, ...args: any[]): Promise<ServiceResult> {
-  return { success: true, data: { submissionId: "SUB-" + Math.floor(1000 + Math.random() * 9000), createdAt: new Date().toISOString() } };
+export async function submitForm(facultyData: any, subjects: any[], signature: string): Promise<ServiceResult> {
+  try {
+    const softwares = subjects[0]?.softwares || [];
+    const results = await prisma.$transaction(async (tx) => {
+      const created = [];
+      for (const sw of softwares) {
+        let dbSoftware = await tx.software.findFirst({
+          where: { name: { equals: sw.softwareName.trim(), mode: 'insensitive' } }
+        });
+        if (!dbSoftware) {
+          dbSoftware = await tx.software.create({
+            data: {
+              name: sw.softwareName.trim(),
+              category: "Requested",
+              latestVersion: sw.version || "Latest",
+              licenseDetails: "FOSS/Open Source",
+              compatibility: "Windows 11"
+            }
+          });
+        }
+        const req = await tx.softwareRequest.create({
+          data: {
+            facultyName: facultyData.name,
+            facultyEmail: facultyData.email,
+            subjectName: sw.semester + " - " + (sw.framework || "Software"),
+            semester: sw.semester,
+            softwareId: dbSoftware.id,
+            installDetails: `Version: ${sw.version || 'Latest'}${sw.framework ? ', Framework: ' + sw.framework : ''}${sw.frameworkVersion ? ' v' + sw.frameworkVersion : ''}`,
+            status: "Pending"
+          }
+        });
+        created.push(req);
+      }
+      return created;
+    });
+
+    return {
+      success: true,
+      data: {
+        submissionId: "SUB-" + Math.floor(1000 + Math.random() * 9000),
+        createdAt: new Date().toISOString()
+      }
+    };
+  } catch (e: any) {
+    console.error("submitForm error:", e);
+    return { success: false, error: e.message || "Failed to submit request." };
+  }
 }
 
-export async function lookupSubmissionStatus(...args: any[]): Promise<ServiceResult> {
-  return { success: true, data: [] };
+export async function lookupSubmissionStatus(query: string): Promise<ServiceResult> {
+  try {
+    const list = await prisma.softwareRequest.findMany({
+      where: {
+        OR: [
+          { facultyEmail: { contains: query, mode: 'insensitive' } },
+          { facultyName: { contains: query, mode: 'insensitive' } },
+          { id: { contains: query, mode: 'insensitive' } }
+        ]
+      },
+      include: { software: true },
+      orderBy: { createdAt: "desc" }
+    });
+
+    // Group by faculty email and 1-minute window
+    const grouped: Record<string, typeof list> = {};
+    list.forEach(req => {
+      const timeBucket = new Date(req.createdAt).toISOString().slice(0, 16);
+      const key = `${req.facultyEmail}_${timeBucket}`;
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(req);
+    });
+
+    const mapped = Object.entries(grouped).map(([key, reqs], idx) => {
+      const first = reqs[0];
+      let status: "Pending" | "In Progress" | "Installed" = "Pending";
+      if (reqs.some(r => r.status === "Installed" || r.status === "Closed" || r.status === "RESOLVED")) {
+        status = "Installed";
+      } else if (reqs.some(r => r.status === "Approved" || r.status === "In Progress" || r.status === "ASSIGNED" || r.status === "DIAGNOSIS" || r.status === "REPAIRING" || r.status === "TESTING")) {
+        status = "In Progress";
+      }
+
+      const softwaresList = reqs.map(r => ({
+        id: r.id,
+        semester: r.semester,
+        softwareName: r.software.name,
+        version: r.installDetails
+      }));
+
+      const classItem = {
+        id: first.id,
+        subjectCode: "REQ-" + (idx + 1),
+        subjectName: "Faculty Consolidated Software Request",
+        semesters: Array.from(new Set(reqs.map(r => r.semester))),
+        softwares: softwaresList,
+        softwareName: reqs.map(r => r.software.name).join(", "),
+        softwareVersion: reqs.map(r => r.installDetails).join("; "),
+        framework: "",
+        labSelection: null,
+        status,
+        remarks: reqs.map(r => `${r.software.name}: ${r.installDetails}`).join(" | "),
+        licenseType: "Mixed / FOSS"
+      };
+
+      return {
+        id: idx + 1,
+        submissionId: first.id.slice(0, 8).toUpperCase(),
+        facultyName: first.facultyName,
+        facultyEmail: first.facultyEmail,
+        facultyMobile: "9999999999",
+        department: "SCSIT",
+        semester: first.semester,
+        subjects: [classItem],
+        signatureData: "",
+        createdAt: first.createdAt.toISOString()
+      };
+    });
+
+    return { success: true, data: mapped };
+  } catch (e: any) {
+    return { success: false, error: "Failed to search submissions." };
+  }
 }
 
 export async function getComputerByTag(tag: string): Promise<ServiceResult> {

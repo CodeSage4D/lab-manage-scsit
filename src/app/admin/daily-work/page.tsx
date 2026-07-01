@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Plus, Search, Trash2, Edit2, RefreshCw, ArrowLeft, CheckCircle, AlertTriangle, Loader2, Check, X, FileSpreadsheet, ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { getDailyWorkLogs, getAdmins, saveDailyWorkLog, deleteDailyWorkLog } from "../../actions";
+import { exportToExcel } from "../../../utils/exportHelper";
 
 interface WorkLog { id:string;userId:string;date:string;tasksPerformed:string;durationMinutes:number;labScope:string;evidenceUrl?:string;remarks?:string;user?:{name:string;employeeId:string}; }
 const EMPTY_FORM = { userId:"", date:new Date().toISOString().slice(0,10), tasksPerformed:"", durationMinutes:60, labScope:"", evidenceUrl:"", remarks:"" };
@@ -67,12 +68,13 @@ export default function DailyWorkRegister() {
     else showToast(res.error||"Failed.","error");
   };
 
-  const exportCSV=()=>{
-    const h=["Staff Name","Date","Lab Scope","Tasks Performed","Duration (min)","Remarks"];
-    const rows=filtered.map(l=>[l.user?.name||"",l.date?.slice(0,10),l.labScope,l.tasksPerformed,l.durationMinutes,l.remarks||""].map(v=>`"${v}"`).join(","));
-    const blob=new Blob([[h.join(","),...rows].join("\n")],{type:"text/csv"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Daily-Work-${new Date().toISOString().slice(0,10)}.csv`;a.click();
-    showToast("CSV exported.");
+  const exportExcel = () => {
+    const headers = ["Staff Name","Date","Lab Scope","Tasks Performed","Duration (min)","Remarks"];
+    const rows = filtered.map(l => [
+      l.user?.name||"", l.date?.slice(0,10), l.labScope, l.tasksPerformed, l.durationMinutes, l.remarks||""
+    ]);
+    exportToExcel(rows, headers, "Daily Work Log", "SCSIT_Daily_Work_Register");
+    showToast("Excel sheet exported successfully.");
   };
 
   return (
@@ -151,7 +153,7 @@ export default function DailyWorkRegister() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={fetchData} className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-400 transition"><RefreshCw size={15}/></button>
-            <button onClick={exportCSV} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/>CSV</button>
+            <button onClick={exportExcel} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"><FileSpreadsheet size={14}/>Excel</button>
             <button onClick={()=>{setEditingId(null);setForm({...EMPTY_FORM,date:new Date().toISOString().slice(0,10)});setShowForm(true);}} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition"><Plus size={14}/>Add Log</button>
           </div>
         </div>
