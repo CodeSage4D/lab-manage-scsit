@@ -6,6 +6,18 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 
 ---
 
+## [0.6.0] — 2026-07-01
+
+### Added
+- **`src/utils/exportHelper.ts`**: Implemented a reusable, premium Excel worksheet generation engine supporting Symbiosis logo branding header blocks on top.
+- **`src/app/actions.ts`**: Created active database records saving in `submitForm` and implemented automatic dynamic 1-minute bucket grouping in `getSubmissions` to consolidate simultaneous requests from the same faculty into single list rows.
+
+### Changed
+- **`src/app/admin/page.tsx`**: Redesigned the admin navigation bar and command sidebar into a high-tech glassmorphic layout.
+- **`src/app/admin/computers/page.tsx`**, **`maintenance/page.tsx`**, **`inventory/page.tsx`**, **`bookings/page.tsx`**, **`visitors/page.tsx`**, **`daily-work/page.tsx`**: Replaced standard CSV output buttons with premium branded Excel `.xlsx` sheet downloads.
+
+---
+
 ## [0.5.2] — 2026-07-01
 
 ### Fixed
