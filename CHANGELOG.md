@@ -6,6 +6,19 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 
 ---
 
+## [0.8.0] — 2026-07-01
+
+### Added
+- **`prisma/schema.prisma`**: Added database indexes on search filter keys and relational fields (`Computer`, `MaintenanceLog`, `Inventory`, `AssetLifecycle`, `SoftwareRequest`, `AuditLog`). Created `HardwareUpgradeHistory` model to track specification upgrades. Connected `SoftwareRequest` to `User` via `facultyUserId`.
+- **`src/middleware.ts`**: Introduced router middleware securing administrative path redirects using secure HTTP-only cookies.
+- **`src/lib/jwt.ts`**: Integrated Node timing-safe SHA-256 HMAC JWT session token signing and verification library.
+- **`src/core/auth/middleware.ts`**: Built `withAuth` role-based session validation server decorator.
+
+### Changed
+- **`src/app/actions.ts`**: Configured automatic HTTP-only `suas_session` cookie injection during password/PIN login, cookie clearing on logout, and wrapped `saveLaboratory`/`deleteLaboratory` write actions inside `withAuth` checks.
+
+---
+
 ## [0.7.0] — 2026-07-01
 
 ### Added

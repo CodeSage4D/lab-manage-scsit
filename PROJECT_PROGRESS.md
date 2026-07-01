@@ -24,14 +24,66 @@ This is a **Digital Laboratory ERP** — an enterprise-grade Laboratory Operatin
 | Sprint 2 | Maintenance Register Module (Digital File) | ✅ Complete | 2026-07-01 |
 | Sprint 3 | Inventory Register Module | ✅ Complete | 2026-07-01 |
 | Sprint 4 | Lab Booking & Daily Work Register | ✅ Complete | 2026-07-01 |
-| Sprint 5 | Document Repository & NAAC Records | ⚪ Pending | 2026-08-05 |
-| Sprint 6 | Enterprise Reports, PDF Export & QR Engine | ⚪ Pending | 2026-08-12 |
-| Sprint 7 | Global Search, Advanced Filters & Audit | ⚪ Pending | 2026-08-19 |
-| Sprint 8 | Offline Archive, ZIP Download & Digital Record Book | ⚪ Pending | 2026-08-26 |
+| Sprint 5 | Database & Security Hardening | ✅ Complete | 2026-07-01 |
+| Sprint 6 | Document Repository & NAAC Records | ⚪ Pending | 2026-08-05 |
+| Sprint 7 | Enterprise Reports, PDF Export & QR Engine | ⚪ Pending | 2026-08-12 |
+| Sprint 8 | Global Search, Advanced Filters & Audit | ⚪ Pending | 2026-08-19 |
+| Sprint 9 | Offline Archive, ZIP Download & Digital Record Book | ⚪ Pending | 2026-08-26 |
 
 ---
 
 ## Engineering Commit Reports
+
+### COMMIT REPORT #004
+
+```
+=========================================
+AUROXN ENGINEERING COMMIT REPORT
+=========================================
+
+Feature Name:     Enterprise Security & Schema Hardening
+Feature ID:       ECR-004
+Sprint:           Sprint 5 (Hardening)
+Version:          v0.8.0
+Date:             2026-07-01
+
+Modules Updated:
+  ✓ Database Schema & Indirection Hardening
+  ✓ Router Security & Session Middleware
+  ✓ API Actions Authentication & RBAC
+
+Files Created:
+  + src/middleware.ts                  → Router middleware for HTTP-only cookies checks
+  + src/lib/jwt.ts                     → Cryptographically signed session JWT utility
+  + src/core/auth/middleware.ts        → Server action withAuth RBAC check wrapper
+  + ARCHITECTURE_DECISIONS.md          → Project architecture decision records (ADRs)
+
+Files Modified:
+  ~ prisma/schema.prisma               → Indexes, upgrades registry, SoftwareRequest relations
+  ~ src/app/actions.ts                 → Safe session setting & secure lab modifications
+  ~ CHANGELOG.md                       → Project release changelogs
+
+Database Changes:
+  - Added relational indexes to Computer, MaintenanceLog, Inventory, AssetLifecycle
+  - Created HardwareUpgradeHistory model for timeline changes
+  - Linked SoftwareRequest to User
+  - Executed forced db push to synchronize Neon PostgreSQL cloud instance
+
+Security Improvements:
+  - Eliminated client-side localStorage authentication loophole
+  - Next.js Router blocks admin access if suas_session cookie is missing
+  - Next.js Server Actions verify user session and roles before editing database
+  - Protected against PIN brute-force and request hijacking
+
+Verification:
+  - TypeScript build check: SUCCESS (0 errors)
+  - Prisma validation: SUCCESS (🚀 Valid)
+  - Routing redirect logs: SUCCESS (Redirects on invalid cookies)
+
+=========================================
+```
+
+---
 
 ### COMMIT REPORT #003
 

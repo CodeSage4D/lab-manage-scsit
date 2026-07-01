@@ -64,6 +64,7 @@ model User {
   workLogs        DailyWorkRegister[]
   bookingsCreated LabBooking[]
   labStaff        LabStaff[]
+  softwareRequests SoftwareRequest[]
 }
 
 model Lab {
@@ -141,6 +142,11 @@ model Computer {
   deployments      SoftwareDeployment[]
   maintenanceLogs  MaintenanceLog[]
   movementHistory  MovementHistory[]
+  upgrades         HardwareUpgradeHistory[]
+
+  @@index([labId])
+  @@index([status])
+  @@index([condition])
 }
 
 model Software {
@@ -199,6 +205,11 @@ model MaintenanceLog {
   updatedAt        DateTime    @updatedAt
   lab              Lab         @relation(fields: [labId], references: [id])
   computer         Computer    @relation(fields: [computerId], references: [id])
+
+  @@index([labId])
+  @@index([computerId])
+  @@index([status])
+  @@index([reportedDate])
 }
 
 model Inventory {
@@ -216,6 +227,9 @@ model Inventory {
   updatedAt       DateTime         @updatedAt
   lab              Lab              @relation(fields: [labId], references: [id])
   lifecycleLogs   AssetLifecycle[]
+
+  @@index([labId])
+  @@index([status])
 }
 
 model AssetLifecycle {
@@ -233,6 +247,8 @@ model AssetLifecycle {
   disposalMethod   String?
   createdAt        DateTime    @default(now())
   inventory        Inventory   @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryId])
 }
 
 model MovementHistory {
@@ -297,6 +313,7 @@ model DocumentRepository {
 
 model SoftwareRequest {
   id              String      @id @default(uuid())
+  facultyUserId   String?
   facultyName     String
   facultyEmail    String
   subjectName     String
@@ -305,7 +322,13 @@ model SoftwareRequest {
   installDetails  String
   status          String      @default("Pending") // Pending, Approved, Installed, Closed
   createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt @default(now())
   software        Software    @relation(fields: [softwareId], references: [id])
+  faculty         User?       @relation(fields: [facultyUserId], references: [id])
+
+  @@index([softwareId])
+  @@index([status])
+  @@index([facultyUserId])
 }
 
 model AuditLog {
@@ -320,6 +343,22 @@ model AuditLog {
   browserAgent    String
   timestamp       DateTime    @default(now())
   user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model HardwareUpgradeHistory {
+  id            String   @id @default(uuid())
+  computerId    String
+  fieldUpgraded String   // "RAM", "SSD", "GPU", etc.
+  oldValue      String
+  newValue      String
+  upgradedBy    String
+  createdAt     DateTime @default(now())
+  computer      Computer @relation(fields: [computerId], references: [id], onDelete: Cascade)
+
+  @@index([computerId])
 }
 
 model Settings {

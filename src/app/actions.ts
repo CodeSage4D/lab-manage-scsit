@@ -1,8 +1,11 @@
 "use server";
 
 import { prisma } from "../lib/db";
+import { withAuth } from "../core/auth/middleware";
 import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { signToken } from "../lib/jwt";
 import {
   computerSchema,
   maintenanceSchema,
@@ -42,6 +45,27 @@ export async function verifyAdminLogin(employeeIdOrEmail: string, passwordPlain:
     });
     if (!user) return { success: false, error: "User not found." };
     if (user.passwordHash !== hashValue(passwordPlain)) return { success: false, error: "Invalid password." };
+
+    const sessionUser = {
+      id: user.id,
+      employeeId: user.employeeId,
+      name: user.name,
+      email: user.email,
+      mobile: user.mobile,
+      designation: user.designation,
+      role: user.designation
+    };
+
+    const token = signToken(sessionUser);
+    const cookieStore = await cookies();
+    cookieStore.set("suas_session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: 60 * 60 * 24 // 24 hours
+    });
+
     return {
       success: true,
       data: {
@@ -64,6 +88,27 @@ export async function verifyAdminPINLogin(employeeId: string, pinPlain: string):
     const user = await prisma.user.findUnique({ where: { employeeId } });
     if (!user || !user.pinHash) return { success: false, error: "User or PIN not found." };
     if (user.pinHash !== hashValue(pinPlain)) return { success: false, error: "Invalid PIN." };
+
+    const sessionUser = {
+      id: user.id,
+      employeeId: user.employeeId,
+      name: user.name,
+      email: user.email,
+      mobile: user.mobile,
+      designation: user.designation,
+      role: user.designation
+    };
+
+    const token = signToken(sessionUser);
+    const cookieStore = await cookies();
+    cookieStore.set("suas_session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: 60 * 60 * 24 // 24 hours
+    });
+
     return { success: true, data: { id: user.id, employeeId: user.employeeId, name: user.name, email: user.email, mobile: user.mobile, designation: user.designation } };
   } catch (e: any) {
     return { success: false, error: "PIN authentication failure." };
@@ -90,7 +135,13 @@ export async function setupAdminPIN(userIdOrEmpId: string, passwordPlain: string
 }
 
 export async function logAdminLogout(...args: any[]): Promise<ServiceResult> {
-  return { success: true };
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete("suas_session");
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: "Logout failed." };
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -402,35 +453,39 @@ export async function getLabById(id: string): Promise<ServiceResult> {
 }
 
 export async function saveLaboratory(data: any, ...args: any[]): Promise<ServiceResult> {
-  try {
-    const { id, computers, maintenanceLogs, inventory, bookings, labStaff, ...schemaData } = data;
-    const parsed = labSchema.parse({ ...schemaData, seatingCapacity: Number(schemaData.seatingCapacity || 30), totalComputers: Number(schemaData.totalComputers || 0), switchesCount: Number(schemaData.switchesCount || 2) });
-    let lab;
-    if (id) {
-      lab = await prisma.lab.update({ where: { id }, data: parsed });
-    } else {
-      lab = await prisma.lab.upsert({
-        where: { code: parsed.code },
-        update: parsed,
-        create: parsed,
-      });
+  return withAuth(["Director Admin", "Super Admin", "IT Admin"], async (session) => {
+    try {
+      const { id, computers, maintenanceLogs, inventory, bookings, labStaff, ...schemaData } = data;
+      const parsed = labSchema.parse({ ...schemaData, seatingCapacity: Number(schemaData.seatingCapacity || 30), totalComputers: Number(schemaData.totalComputers || 0), switchesCount: Number(schemaData.switchesCount || 2) });
+      let lab;
+      if (id) {
+        lab = await prisma.lab.update({ where: { id }, data: parsed });
+      } else {
+        lab = await prisma.lab.upsert({
+          where: { code: parsed.code },
+          update: parsed,
+          create: parsed,
+        });
+      }
+      revalidatePath("/admin/labs");
+      return { success: true, data: lab };
+    } catch (e: any) {
+      console.error("saveLaboratory:", e);
+      return { success: false, error: e.message || "Failed to save lab." };
     }
-    revalidatePath("/admin/labs");
-    return { success: true, data: lab };
-  } catch (e: any) {
-    console.error("saveLaboratory:", e);
-    return { success: false, error: e.message || "Failed to save lab." };
-  }
+  });
 }
 
 export async function deleteLaboratory(id: any, ...args: any[]): Promise<ServiceResult> {
-  try {
-    await prisma.lab.delete({ where: { id: String(id) } });
-    revalidatePath("/admin/labs");
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: "Failed to delete lab." };
-  }
+  return withAuth(["Director Admin", "Super Admin"], async (session) => {
+    try {
+      await prisma.lab.delete({ where: { id: String(id) } });
+      revalidatePath("/admin/labs");
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: "Failed to delete lab." };
+    }
+  });
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -1050,7 +1105,7 @@ export async function getSubmissions(): Promise<ServiceResult> {
       const classItem = {
         id: first.id,
         subjectCode: "REQ-" + (idx + 1),
-        subjectName: "Faculty Consolidated Software Request",
+        subjectName: first.subjectName || "Faculty Software Request",
         semesters: Array.from(new Set(reqs.map(r => r.semester))),
         softwares: softwaresList,
         softwareName: reqs.map(r => r.software.name).join(", "),
