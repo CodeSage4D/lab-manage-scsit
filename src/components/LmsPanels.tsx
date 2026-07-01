@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart3, BookOpen, Server, FileCode, Activity, Layers, Calendar,
   ShieldCheck, FileText, Bell, History, Settings, Plus, Edit, Trash2,
-  Download, Search, Check, X, FileSpreadsheet, AlertCircle, File, Lock, ChevronDown
+  Download, Search, Check, X, FileSpreadsheet, AlertCircle, File, Lock, ChevronDown,
+  Camera, Upload, RefreshCw, Printer
 } from "lucide-react";
+import * as XLSX from "xlsx";
+import { importAssetsBulk, getImportLogs } from "../app/actions";
 
 /* ── Prop Type declarations ────────────────────────────────────────────────── */
 interface SoftwareEntry {
@@ -313,6 +316,46 @@ interface LmsPanelsProps {
   onNavigateToTab: (tab: string) => void;
 }
 
+export function Code39Barcode({ value }: { value: string }) {
+  const CODE39_MAP: Record<string, string> = {
+    '0': '101001101101', '1': '110100101011', '2': '101100101011', '3': '110110010101',
+    '4': '101001101011', '5': '110100110101', '6': '101100110101', '7': '101001011011',
+    '8': '110100101101', '9': '101100101101', 'A': '110101001011', 'B': '101101001011',
+    'C': '110110100101', 'D': '101011001011', 'E': '110101100101', 'F': '101101100101',
+    'G': '101010011011', 'H': '110101001101', 'I': '101101001101', 'J': '101011001101',
+    'K': '110101010011', 'L': '101101001001', 'M': '110110101001', 'N': '101011010011',
+    'O': '110101101001', 'P': '101101101001', 'Q': '101010110011', 'R': '110101011001',
+    'S': '101101011001', 'T': '101011011001', 'U': '110010101011', 'V': '100110101011',
+    'W': '110011010101', 'X': '100101101011', 'Y': '110010110101', 'Z': '100110110101',
+    '-': '100101011011', '.': '110010101101', ' ': '100110101101', '*': '100101101101',
+    '$': '100100100101', '/': '100100101001', '+': '100101001001', '%': '101001001001'
+  };
+
+  const clean = (value || "").toUpperCase().replace(/[^A-Z0-9\-\.\ \*\$\/\+\%]/g, "");
+  const formatted = `*${clean}*`;
+  
+  let pattern = "";
+  for (let i = 0; i < formatted.length; i++) {
+    const char = formatted[i];
+    const pat = CODE39_MAP[char] || CODE39_MAP['*'];
+    pattern += pat + "0"; // space
+  }
+
+  const width = pattern.length * 2;
+  const height = 40;
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} className="max-w-[240px] mx-auto">
+      {pattern.split("").map((bit, idx) => {
+        if (bit === "1") {
+          return <rect key={idx} x={idx * 2} y={0} width={2} height={height} fill="black" />;
+        }
+        return null;
+      })}
+    </svg>
+  );
+}
+
 export default function LmsPanels({
   activeTab, departmentDetails, submissions, laboratories, labSoftwares, maintenanceLogs,
   inventoryItems, assetLifecycles, naacDocsList, ieeeRecords, documentRepoList,
@@ -335,11 +378,110 @@ export default function LmsPanels({
   handleFileChange, onUpdateClass, onDeleteSubmission, onOpenCreateModal, onNavigateToTab
 }: LmsPanelsProps) {
 
-  const isSuperAdmin = activeAdmin?.role === "Director Admin";
+  const isSuperAdmin = activeAdmin?.role === "Director Admin" || activeAdmin?.role === "Super Admin";
   const isWriteAllowed = activeAdmin?.role === "Director Admin" || 
+                         activeAdmin?.role === "Super Admin" ||
+                         activeAdmin?.role === "IT Admin" ||
+                         activeAdmin?.role === "Lab Admin" ||
                          activeAdmin?.role === "IT Person" || 
                          activeAdmin?.role === "Trainer of Practice" || 
                          activeAdmin?.role === "Lab Assistant";
+
+  /* ── ITAM DYNAMIC SCRIPTS & SCANNING STATES ── */
+  const [tesseractReady, setTesseractReady] = useState(false);
+  const [html5QrcodeReady, setHtml5QrcodeReady] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrResult, setOcrResult] = useState("");
+  const [activeModalTab, setActiveModalTab] = useState<"basic" | "network" | "peripherals" | "photos">("basic");
+  
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printSize, setPrintSize] = useState<"small" | "medium" | "large">("medium");
+  const [printAsset, setPrintAsset] = useState<any>(null);
+  const [batchPrintSelect, setBatchPrintSelect] = useState<string[]>([]); // Array of global_asset_ids
+  
+  const [webcamScanning, setWebcamScanning] = useState(false);
+  const [expandedAssetRow, setExpandedAssetRow] = useState<string | null>(null); // UUID
+
+  // Dynamic script loader for Tesseract and Scanner
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Load HTML5 QR Code Scanner from CDN
+    if (!window.hasOwnProperty("Html5Qrcode")) {
+      const qrcodeScript = document.createElement("script");
+      qrcodeScript.src = "https://unpkg.com/html5-qrcode";
+      qrcodeScript.async = true;
+      qrcodeScript.onload = () => setHtml5QrcodeReady(true);
+      document.body.appendChild(qrcodeScript);
+    } else {
+      setHtml5QrcodeReady(true);
+    }
+
+    // Load Tesseract.js from CDN
+    if (!window.hasOwnProperty("Tesseract")) {
+      const tesseractScript = document.createElement("script");
+      tesseractScript.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+      tesseractScript.async = true;
+      tesseractScript.onload = () => setTesseractReady(true);
+      document.body.appendChild(tesseractScript);
+    } else {
+      setTesseractReady(true);
+    }
+  }, []);
+
+  // Global Keyboard listener for rapid USB Hardware Barcode Scanners
+  useEffect(() => {
+    let buffer = "";
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const now = Date.now();
+      
+      // USB scanners usually send keys rapidly (e.g. interval < 50ms)
+      if (now - lastKeyTime > 50) {
+        buffer = ""; // Clear stale inputs
+      }
+      
+      lastKeyTime = now;
+
+      // Ignore modifiers
+      if (e.key === "Shift" || e.key === "Control" || e.key === "Alt") {
+        return;
+      }
+
+      if (e.key === "Enter") {
+        if (buffer.length > 3) {
+          // Rapid input ending with Enter. This is a barcode scan!
+          // We search for this barcode among inventory assets
+          const cleanCode = buffer.trim();
+          const matched: any = (inventoryItems as any[]).find((item: any) => 
+            (item.barcode_data && item.barcode_data.toUpperCase() === cleanCode.toUpperCase()) ||
+            (item.lab_asset_id && item.lab_asset_id.toUpperCase() === cleanCode.toUpperCase()) ||
+            (item.global_asset_id && item.global_asset_id.toUpperCase() === cleanCode.toUpperCase()) ||
+            (item.serial_number && item.serial_number.toUpperCase() === cleanCode.toUpperCase())
+          );
+
+          if (matched) {
+            showToast(`USB Barcode Scanned: Matched Asset ${matched.global_asset_id} (${matched.brand} ${matched.model_number || ""})`);
+            // Set search queries to highlight
+            setGlobalSearch(cleanCode);
+            // Locate to correct tab
+            onNavigateToTab("laboratory_inventory");
+          } else {
+            showToast(`USB Barcode Scanned: "${cleanCode}" - No matching asset found in directory.`);
+          }
+          buffer = "";
+        }
+      } else {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [inventoryItems, onNavigateToTab, showToast]);
 
   /* ── FILTER STATES FOR PANELS ── */
   const [labFilter, setLabFilter] = useState("All");
@@ -350,6 +492,21 @@ export default function LmsPanels({
   const [invLabFilter, setInvLabFilter] = useState("All");
   const [docRepoCatFilter, setDocRepoCatFilter] = useState("All");
   const [globalSearch, setGlobalSearch] = useState("");
+
+  // Auto-expand details drawer if search query matches exactly one asset's unique ID
+  useEffect(() => {
+    if (globalSearch.trim()) {
+      const q = globalSearch.trim().toLowerCase();
+      const matched = (inventoryItems as any[]).filter(item => 
+        (item.lab_asset_id && item.lab_asset_id.toLowerCase() === q) ||
+        (item.global_asset_id && item.global_asset_id.toLowerCase() === q) ||
+        (item.asset_number && item.asset_number.toLowerCase() === q)
+      );
+      if (matched.length === 1) {
+        setExpandedAssetRow(matched[0].uuid || matched[0].id);
+      }
+    }
+  }, [globalSearch, inventoryItems]);
 
   /* ── MAINTENANCE BULK ADD STATES ── */
   const [maintSearch, setMaintSearch] = useState("");
@@ -369,6 +526,256 @@ export default function LmsPanels({
     action_taken: "", technician_name: "", status: "Pending", completion_date: "", remarks: ""
   });
 
+  /* ── SMART EXCEL IMPORT WIZARD STATES ── */
+  const [showImportWizard, setShowImportWizard] = useState(false);
+  const [importLogs, setImportLogs] = useState<any[]>([]);
+  const [loadingImportLogs, setLoadingImportLogs] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [fileName, setFileName] = useState("");
+  const [parsedRecords, setParsedRecords] = useState<any[]>([]);
+  const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+  const [columnMappings, setColumnMappings] = useState<Record<string, string>>({});
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [estimatedTime, setEstimatedTime] = useState("");
+  const [importSummary, setImportSummary] = useState<any>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const [importWizardOptions, setImportWizardOptions] = useState({
+    importNewOnly: true,
+    updateExisting: false,
+    skipDuplicates: false,
+    generateQr: true,
+    generateLabId: true,
+    generateGlobalId: true,
+    validateOnly: false
+  });
+
+  const fetchImportLogs = async () => {
+    setLoadingImportLogs(true);
+    try {
+      const res = await getImportLogs();
+      if (res.success && res.data) {
+        setImportLogs(res.data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingImportLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showImportWizard) {
+      fetchImportLogs();
+    }
+  }, [showImportWizard]);
+
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      {
+        "lab_name": "Computer Center",
+        "asset_type": "CPU",
+        "brand": "Dell",
+        "model_number": "OptiPlex 7090",
+        "serial_number": "ABC123456",
+        "service_tag": "ST12345",
+        "mac_address": "AA:BB:CC:DD:EE:FF",
+        "ipv4": "192.168.1.10",
+        "computer_name": "LAB-A-PC01",
+        "hostname": "lms-pc01.suas",
+        "processor": "Intel Core i7",
+        "ram": "16 GB",
+        "storage": "512 GB SSD",
+        "storage_type": "SSD",
+        "operating_system": "Windows 11 Pro",
+        "purchase_date": "2026-01-15",
+        "warranty_end": "2029-01-15",
+        "status": "Working",
+        "lab_asset_id": "",
+        "global_asset_id": ""
+      }
+    ];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    XLSX.utils.book_append_sheet(wb, ws, "Assets Template");
+    XLSX.writeFile(wb, "SCSIT_Assets_Import_Template.xlsx");
+    showToast("Excel Template downloaded successfully.");
+  };
+
+  const handleDownloadFailedRecords = () => {
+    if (!importSummary || !importSummary.errors || importSummary.errors.length === 0) return;
+    const failedData = importSummary.errors.map((err: any) => {
+      const originalRow = parsedRecords[err.row - 2] || {};
+      return {
+        ...originalRow,
+        "Import Error Reason": err.error
+      };
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(failedData);
+    XLSX.utils.book_append_sheet(wb, ws, "Correction Sheet");
+    XLSX.writeFile(wb, "Failed_Import_Records_Correct_Me.xlsx");
+    showToast("Correction worksheet downloaded.");
+  };
+
+  const handleFileUpload = (file: File) => {
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = e.target?.result;
+      if (!data) return;
+      try {
+        const workbook = XLSX.read(data, { type: "array", cellDates: true, raw: false });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        
+        if (json.length === 0) {
+          showToast("Excel spreadsheet is empty.");
+          return;
+        }
+
+        const headers = Object.keys(json[0]);
+        setExcelHeaders(headers);
+        setParsedRecords(json);
+        
+        // Auto-mapping columns logic
+        const initialMappings: Record<string, string> = {};
+        headers.forEach(h => {
+          const norm = h.toLowerCase().trim().replace(/[\s_\-]/g, "");
+          if (norm === "lab" || norm === "laboratory" || norm === "labname" || norm === "location") {
+            initialMappings[h] = "lab_name";
+          } else if (norm === "pcnumber" || norm === "systemnumber" || norm === "computerno" || norm === "labassetid" || norm === "labassetnumber") {
+            initialMappings[h] = "lab_asset_id";
+          } else if (norm === "globalassetid" || norm === "globalid" || norm === "assetid") {
+            initialMappings[h] = "global_asset_id";
+          } else if (norm === "device" || norm === "devicetype" || norm === "assettype") {
+            initialMappings[h] = "asset_type";
+          } else if (norm === "brand" || norm === "cpubrand") {
+            initialMappings[h] = "brand";
+          } else if (norm === "model" || norm === "modelnumber" || norm === "systemmodel") {
+            initialMappings[h] = "model_number";
+          } else if (norm === "serial" || norm === "serialnumber" || norm === "cpuserial" || norm === "sn") {
+            initialMappings[h] = "serial_number";
+          } else if (norm === "servicetag" || norm === "st" || norm === "tag") {
+            initialMappings[h] = "service_tag";
+          } else if (norm === "ip" || norm === "ipv4" || norm === "ipaddress" || norm === "ipv4address") {
+            initialMappings[h] = "ipv4";
+          } else if (norm === "mac" || norm === "macaddress" || norm === "lanmac") {
+            initialMappings[h] = "mac_address";
+          } else if (norm === "computername") {
+            initialMappings[h] = "computer_name";
+          } else if (norm === "hostname") {
+            initialMappings[h] = "hostname";
+          } else if (norm === "cpu" || norm === "processor") {
+            initialMappings[h] = "processor";
+          } else if (norm === "ram" || norm === "memory") {
+            initialMappings[h] = "ram";
+          } else if (norm === "storage" || norm === "disk" || norm === "hdd" || norm === "ssd") {
+            initialMappings[h] = "storage";
+          } else if (norm === "storagetype" || norm === "disktype") {
+            initialMappings[h] = "storage_type";
+          } else if (norm === "os" || norm === "operatingsystem") {
+            initialMappings[h] = "operating_system";
+          } else if (norm === "purchasedate" || norm === "purchase") {
+            initialMappings[h] = "purchase_date";
+          } else if (norm === "warranty" || norm === "warrantyend" || norm === "warrantyexpiry") {
+            initialMappings[h] = "warranty_end";
+          } else if (norm === "status" || norm === "assetstatus" || norm === "condition") {
+            initialMappings[h] = "status";
+          } else {
+            initialMappings[h] = "";
+          }
+        });
+        setColumnMappings(initialMappings);
+        setWizardStep(2);
+        showToast(`Parsed ${json.length} rows successfully.`);
+      } catch (err) {
+        console.error(err);
+        showToast("Error parsing Excel file. Check format.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+  const handleDragLeave = () => {
+    setDragOver(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileUpload(file);
+  };
+
+  const getMappedRecords = () => {
+    return parsedRecords.map((row, idx) => {
+      const mappedRow: any = { __rowNum__: idx + 2 };
+      Object.entries(columnMappings).forEach(([excelHeader, systemField]) => {
+        if (systemField) {
+          mappedRow[systemField] = row[excelHeader];
+        }
+      });
+      return mappedRow;
+    });
+  };
+
+  const executeBulkImport = async () => {
+    setIsImporting(true);
+    setImportProgress(10);
+    setEstimatedTime("Calculating...");
+    
+    const progressTimer = setInterval(() => {
+      setImportProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressTimer);
+          return 90;
+        }
+        const nextProg = prev + Math.floor(Math.random() * 8) + 3;
+        const totalRows = parsedRecords.length;
+        const remRows = Math.max(0, Math.ceil(totalRows * (1 - nextProg / 100)));
+        const estSec = Math.max(1, Math.ceil(remRows * 0.005));
+        setEstimatedTime(`${estSec}s remaining`);
+        return nextProg;
+      });
+    }, 150);
+
+    try {
+      const mapped = getMappedRecords();
+      const res = await importAssetsBulk(mapped, importWizardOptions, fileName, activeAdmin?.name || "Admin");
+      clearInterval(progressTimer);
+      setImportProgress(100);
+      setEstimatedTime("0s");
+      setIsImporting(false);
+      setImportSummary(res.summary || {
+        total: mapped.length,
+        imported: res.success ? mapped.length : 0,
+        updated: 0,
+        skipped: 0,
+        failed: res.success ? 0 : mapped.length,
+        errors: res.success ? [] : [{ row: "All", error: res.error || "Transaction error" }]
+      });
+      if (res.success) {
+        showToast(res.message || "Import completed successfully!");
+      } else {
+        showToast(res.error || "Import failed. Transaction rolled back.");
+      }
+      setWizardStep(4);
+      fetchData();
+      fetchImportLogs();
+    } catch (err: any) {
+      clearInterval(progressTimer);
+      setIsImporting(false);
+      setImportProgress(0);
+      setEstimatedTime("");
+      showToast(err.message || "Critical connection error.");
+    }
+  };
 
   /* ── LAB ASSIGNMENT OPTIONS ── */
   const LAB_NAMES = useMemo(() => laboratories.map(l => l.name), [laboratories]);
@@ -399,6 +806,104 @@ export default function LmsPanels({
     monitor: "", printer_details: "", projector_details: "", ups_details: "", network_details: "",
     purchase_date: new Date().toISOString().split("T")[0], warranty_details: "", vendor_details: "", status: "Active"
   });
+
+  const resetInvForm = () => {
+    setInvForm({
+      lab_id: laboratories[0]?.id?.toString() || "",
+      device_type: "CPU",
+      brand: "",
+      manufacturer: "",
+      model_number: "",
+      serial_number: "",
+      service_tag: "",
+      express_service_code: "",
+      mtm: "",
+      product_number: "",
+      manufacture_date: "",
+      purchase_date: new Date().toISOString().split("T")[0],
+      invoice_number: "",
+      warranty_start: "",
+      warranty_end: "",
+      vendor: "",
+      status: "Installed",
+      parent_cpu_id: "",
+      computer_name: "",
+      hostname: "",
+      ipv4: "",
+      ipv6: "",
+      mac_address: "",
+      wifi_mac: "",
+      lan_mac: "",
+      gateway: "",
+      dns: "",
+      ip_type: "DHCP",
+      domain: "",
+      workgroup: "",
+      processor: "",
+      ram: "",
+      storage: "",
+      storage_type: "SSD",
+      gpu: "",
+      motherboard: "",
+      bios_version: "",
+      operating_system: "Windows 11",
+      office_version: "",
+      screen_size: "",
+      resolution: "",
+      barcode_data: "",
+      attachments: []
+    });
+  };
+
+  const populateInvForm = (item: any) => {
+    setInvForm({
+      id: item.uuid || item.id,
+      lab_id: item.lab_id?.toString() || "",
+      device_type: item.device_type || item.asset_type || "CPU",
+      brand: item.brand || "",
+      manufacturer: item.manufacturer || "",
+      model_number: item.model_number || "",
+      serial_number: item.serial_number || "",
+      service_tag: item.service_tag || "",
+      express_service_code: item.express_service_code || "",
+      mtm: item.mtm || "",
+      product_number: item.product_number || "",
+      manufacture_date: item.manufacture_date ? new Date(item.manufacture_date).toISOString().split('T')[0] : "",
+      purchase_date: item.purchase_date ? new Date(item.purchase_date).toISOString().split('T')[0] : "",
+      invoice_number: item.invoice_number || "",
+      warranty_start: item.warranty_start ? new Date(item.warranty_start).toISOString().split('T')[0] : "",
+      warranty_end: item.warranty_end ? new Date(item.warranty_end).toISOString().split('T')[0] : "",
+      vendor: item.vendor || item.vendor_details || "",
+      status: item.status || "Installed",
+      parent_cpu_id: item.parent_cpu_id || "",
+      computer_name: item.computer_name || "",
+      hostname: item.hostname || "",
+      ipv4: item.ipv4 || "",
+      ipv6: item.ipv6 || "",
+      mac_address: item.mac_address || "",
+      wifi_mac: item.wifi_mac || "",
+      lan_mac: item.lan_mac || "",
+      gateway: item.gateway || "",
+      dns: item.dns || "",
+      ip_type: item.ip_type || "DHCP",
+      domain: item.domain || "",
+      workgroup: item.workgroup || "",
+      processor: item.cpu || item.processor || "",
+      ram: item.ram || "",
+      storage: item.storage || "",
+      storage_type: item.storage_type || "SSD",
+      gpu: item.gpu || "",
+      motherboard: item.motherboard || "",
+      bios_version: item.bios_version || "",
+      operating_system: item.operating_system || "Windows 11",
+      office_version: item.office_version || "",
+      screen_size: item.monitor || item.screen_size || "",
+      resolution: item.resolution || "",
+      barcode_data: item.barcode_data || "",
+      attachments: item.attachments || [],
+      version: item.version
+    });
+  };
 
   const [lifecycleForm, setLifecycleForm] = useState<any>({
     inventory_id: "", purchase_date: new Date().toISOString().split("T")[0],
@@ -2070,7 +2575,7 @@ export default function LmsPanels({
                       <span className="text-[10px] font-black uppercase text-slate-500">New Record Entry</span>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs font-semibold">
                         {[
-                          { label: "PC Number", key: "pc_number", placeholder: "e.g. PC-12" },
+                          { label: "PC Number", key: "pc_number", placeholder: "e.g. LBA-021" },
                           { label: "System Make", key: "system_make", placeholder: "e.g. Dell, HP, Lenovo" },
                           { label: "System Model", key: "system_model", placeholder: "e.g. OptiPlex 7080" },
                           { label: "Serial Number", key: "serial_number", placeholder: "Optional" },
@@ -2210,7 +2715,7 @@ export default function LmsPanels({
                       </div>
                       <div className="space-y-1">
                         <label className="text-[9px] uppercase tracking-wider block text-slate-400">PC Number</label>
-                        <input type="text" placeholder="e.g. PC-07" value={maintForm.pc_number || ""} onChange={e => setMaintForm({ ...maintForm, pc_number: e.target.value })} className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white" />
+                        <input type="text" placeholder="e.g. LBA-021" value={maintForm.pc_number || ""} onChange={e => setMaintForm({ ...maintForm, pc_number: e.target.value })} className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[9px] uppercase tracking-wider block text-slate-400">System Make</label>
@@ -2276,358 +2781,1814 @@ export default function LmsPanels({
                     <button type="submit" className="w-full py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-extrabold text-xs uppercase tracking-wider rounded-xl hover:bg-suas-ruby dark:hover:bg-suas-ruby-neon hover:text-white transition shadow-md cursor-pointer">
                       {editingMaintenance ? "Update Maintenance Record" : "Save Maintenance Record"}
                     </button>
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </div>
-      );
-    })()}
-
-      {/* 6. Inventory Panel (Module 5) [Lockable] */}
-      {activeTab === "laboratory_inventory" && modulesStatus.laboratory_inventory && (
-        <div className="space-y-6 animate-float-up text-left">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h3 className="text-sm font-black text-slate-805 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                <Layers size={15} className="text-suas-ruby" /> Physical Laboratory Inventory Directory
-              </h3>
-              <p className="text-[10px] text-slate-455">Manage workstation assets: CPUs, RAM counts, disks, projectors, UPS, and printers.</p>
-            </div>
-            
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <div className="relative flex-1 md:w-36">
-                <select
-                  value={invLabFilter}
-                  onChange={(e) => setInvLabFilter(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs rounded-xl outline-none appearance-none bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-350 pr-8"
-                >
-                  <option value="All">All Labs</option>
-                  {LAB_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
-                </select>
-                <ChevronDown size={12} className="absolute right-2.5 top-[10px] text-slate-400 pointer-events-none" />
+                  </form>
+                </motion.div>
               </div>
-              <div className="relative flex-1 md:w-36">
-                <select
-                  value={invTypeFilter}
-                  onChange={(e) => setInvTypeFilter(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs rounded-xl outline-none appearance-none bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-350 pr-8"
-                >
-                  <option value="All">All Types</option>
-                  <option value="Desktop">Desktop PCs</option>
-                  <option value="Laptop">Laptops</option>
-                  <option value="Printer">Printers</option>
-                  <option value="Projector">Projectors</option>
-                  <option value="UPS">UPS Units</option>
-                  <option value="Network Device">Network Devices</option>
-                </select>
-                <ChevronDown size={12} className="absolute right-2.5 top-[10px] text-slate-400 pointer-events-none" />
-              </div>
-
-              {isWriteAllowed && (
-                <button
-                  onClick={() => { setEditingInventory(null); setShowInventoryModal(true); }}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-black rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  <Plus size={14} /> Add Asset
-                </button>
-              )}
-            </div>
+            )}
           </div>
+        );
+      })()}
 
-          {/* Inventory table */}
-          <div className="glass-card p-5 border border-slate-200/50 dark:border-zinc-800/50 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-zinc-850 text-slate-400 font-bold uppercase text-[10px]">
-                    <th className="py-3 px-2">Asset Number</th>
-                    <th className="py-3 px-2">Lab</th>
-                    <th className="py-3 px-2">Type</th>
-                    <th className="py-3 px-2">System Specs (CPU/RAM/Storage)</th>
-                    <th className="py-3 px-2">Monitor / Peripherals</th>
-                    <th className="py-3 px-2">Purchase Date</th>
-                    <th className="py-3 px-2">Warranty details</th>
-                    <th className="py-3 px-2">Status</th>
-                    {isWriteAllowed && <th className="py-3 px-2 text-right">Actions</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-zinc-850 font-semibold text-slate-700 dark:text-slate-300">
-                  {inventoryItems.filter(i => (invLabFilter === "All" || i.lab_name === invLabFilter) && (invTypeFilter === "All" || i.device_type === invTypeFilter)).length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-500 italic">No inventory items registered matching filter criteria.</td>
-                    </tr>
-                  ) : (
-                    inventoryItems.filter(i => (invLabFilter === "All" || i.lab_name === invLabFilter) && (invTypeFilter === "All" || i.device_type === invTypeFilter)).map(item => (
-                      <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/30">
-                        <td className="py-3 px-2 font-mono font-black text-slate-900 dark:text-white">{item.asset_number}</td>
-                        <td className="py-3 px-2">🏢 {item.lab_name}</td>
-                        <td className="py-3 px-2">{item.device_type}</td>
-                        <td className="py-3 px-2">
-                          {item.device_type === "Desktop" || item.device_type === "Laptop" ? (
-                            <span>{item.cpu} | {item.ram} | {item.storage}</span>
-                          ) : (
-                            <span className="text-slate-400 italic">N/A</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-2">
-                          {item.device_type === "Desktop" ? `Monitor: ${item.monitor || "-"}` 
-                          : item.device_type === "Printer" ? item.printer_details 
-                          : item.device_type === "Projector" ? item.projector_details 
-                          : item.device_type === "UPS" ? item.ups_details
-                          : item.device_type === "Network Device" ? item.network_details : "-"}
-                        </td>
-                        <td className="py-3 px-2">{item.purchase_date}</td>
-                        <td className="py-3 px-2 max-w-[120px] truncate" title={item.warranty_details}>{item.warranty_details || "-"}</td>
-                        <td className="py-3 px-2">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
-                            item.status === "Active" ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600"
-                          : "bg-rose-50 dark:bg-rose-950/20 text-suas-ruby"
-                          }`}>
-                            {item.status}
-                          </span>
-                        </td>
-                        {isWriteAllowed && (
-                          <td className="py-3 px-2 text-right space-x-1">
-                            <button
-                              onClick={() => { setEditingInventory(item); setShowInventoryModal(true); }}
-                              className="p-1 text-slate-400 hover:text-slate-805 dark:hover:text-white cursor-pointer"
-                            >
-                              <Edit size={13} />
-                            </button>
-                            <button
-                              onClick={() => item.id && onDeleteInventory(item.id)}
-                              className="p-1 text-rose-600 hover:text-rose-850 cursor-pointer"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {activeTab === "laboratory_inventory" && modulesStatus.laboratory_inventory && (() => {
+        const assetsList = inventoryItems as any[];
+        // Computed stats for ITAM Dashboard
+        const totalAssets = assetsList.length;
+        const workingAssets = assetsList.filter(i => i.status === "Working" || i.status === "Active" || i.status === "Installed").length;
+        const faultyAssets = assetsList.filter(i => i.status === "Faulty" || i.status === "Damaged").length;
+        const repairAssets = assetsList.filter(i => i.status === "Under Repair" || i.status === "Maintenance").length;
+        const spareAssets = assetsList.filter(i => i.status === "Spare").length;
 
-          {/* INVENTORY CREATE / EDIT MODAL */}
-          {showInventoryModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm">
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="bg-white dark:bg-zinc-950 border border-slate-200/50 dark:border-zinc-800/50 max-w-lg w-full rounded-2xl shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto relative text-left"
-              >
-                <button onClick={() => setShowInventoryModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-655 transition"><X size={18} /></button>
-                <div className="pb-3 border-b border-slate-100 dark:border-zinc-850 mb-4">
-                  <h4 className="text-base font-black text-slate-805 dark:text-white font-display">
-                    {editingInventory ? "Edit Inventory Asset details" : "Register New Equipment / Asset"}
-                  </h4>
+        // Warranty alerts (upcoming)
+        let expiry30 = 0, expiry15 = 0, expiry7 = 0, expired = 0;
+        const now = Date.now();
+        assetsList.forEach(i => {
+          const expDate = i.warranty_end || i.warranty_details;
+          if (expDate) {
+            const expTime = new Date(expDate).getTime();
+            if (!isNaN(expTime)) {
+              const diffDays = Math.ceil((expTime - now) / (1000 * 60 * 60 * 24));
+              if (diffDays < 0) expired++;
+              else if (diffDays <= 7) expiry7++;
+              else if (diffDays <= 15) expiry15++;
+              else if (diffDays <= 30) expiry30++;
+            }
+          }
+        });
+
+        // Network Status
+        const networkOnline = assetsList.filter(i => i.network_status === "Online").length;
+        const networkOffline = assetsList.filter(i => i.network_status === "Offline").length;
+
+        // Local Duplicate warnings checker
+        const localWarnings = (() => {
+          const warnings: string[] = [];
+          if (!showInventoryModal) return warnings;
+          
+          const cleanSerial = (invForm.serial_number || "").trim().toLowerCase();
+          const cleanTag = (invForm.service_tag || "").trim().toLowerCase();
+          const cleanIp = (invForm.ipv4 || "").trim().toLowerCase();
+          const cleanMac = (invForm.mac_address || "").trim().toLowerCase();
+          const cleanHostname = (invForm.hostname || "").trim().toLowerCase();
+          const cleanBarcode = (invForm.barcode_data || "").trim().toLowerCase();
+
+          const editingId = invForm.id || invForm.uuid;
+
+          assetsList.forEach((item: any) => {
+            const itemId = item.uuid || item.id;
+            if (editingId && itemId === editingId) return;
+
+            if (cleanSerial && (item.serial_number || "").toLowerCase() === cleanSerial) {
+              warnings.push(`Duplicate Serial: "${item.serial_number}" already belongs to asset ${item.global_asset_id}`);
+            }
+            if (cleanTag && (item.service_tag || "").toLowerCase() === cleanTag) {
+              warnings.push(`Duplicate Service Tag: "${item.service_tag}" already belongs to asset ${item.global_asset_id}`);
+            }
+            if (cleanIp && cleanIp !== "127.0.0.1" && cleanIp !== "0.0.0.0" && (item.ipv4 || "").toLowerCase() === cleanIp) {
+              warnings.push(`Duplicate IP Address: "${item.ipv4}" already belongs to asset ${item.global_asset_id}`);
+            }
+            if (cleanMac && (item.mac_address || "").toLowerCase() === cleanMac) {
+              warnings.push(`Duplicate MAC Address: "${item.mac_address}" already belongs to asset ${item.global_asset_id}`);
+            }
+            if (cleanHostname && (item.hostname || "").toLowerCase() === cleanHostname) {
+              warnings.push(`Duplicate Hostname: "${item.hostname}" already belongs to asset ${item.global_asset_id}`);
+            }
+            if (cleanBarcode && (item.barcode_data || "").toLowerCase() === cleanBarcode) {
+              warnings.push(`Duplicate Barcode: "${item.barcode_data}" already belongs to asset ${item.global_asset_id}`);
+            }
+          });
+          return warnings;
+        })();
+
+        // Filter assets list
+        const filteredAssets = assetsList.filter(item => {
+          if (invLabFilter !== "All" && item.lab_name !== invLabFilter) return false;
+          if (invTypeFilter !== "All" && item.device_type !== invTypeFilter) return false;
+          if (globalSearch.trim()) {
+            const q = globalSearch.toLowerCase();
+            return (
+              (item.global_asset_id || "").toLowerCase().includes(q) ||
+              (item.lab_asset_id || item.asset_number || "").toLowerCase().includes(q) ||
+              (item.serial_number || "").toLowerCase().includes(q) ||
+              (item.service_tag || "").toLowerCase().includes(q) ||
+              (item.ipv4 || "").toLowerCase().includes(q) ||
+              (item.mac_address || "").toLowerCase().includes(q) ||
+              (item.brand || "").toLowerCase().includes(q) ||
+              (item.model_number || "").toLowerCase().includes(q) ||
+              (item.hostname || "").toLowerCase().includes(q) ||
+              (item.computer_name || "").toLowerCase().includes(q)
+            );
+          }
+          return true;
+        });
+
+        // Start HTML5 camera QR scanner
+        const startScanner = () => {
+          setWebcamScanning(true);
+          setTimeout(() => {
+            // @ts-ignore
+            if (window.Html5QrcodeScanner) {
+              // @ts-ignore
+              const scanner = new window.Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+              scanner.render((decodedText: string) => {
+                scanner.clear();
+                setWebcamScanning(false);
+                showToast(`QR Code Scanned: "${decodedText}"`);
+                try {
+                  const parsed = JSON.parse(decodedText);
+                  setGlobalSearch(parsed.AssetID || parsed.AssetID || decodedText);
+                } catch (e) {
+                  setGlobalSearch(decodedText);
+                }
+              }, (err: any) => {});
+            }
+          }, 400);
+        };
+
+        // Client-side OCR file handler
+        const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          setOcrLoading(true);
+          setOcrResult("");
+          try {
+            // @ts-ignore
+            if (window.Tesseract) {
+              // @ts-ignore
+              const { data: { text, confidence } } = await window.Tesseract.recognize(file, 'eng');
+              
+              // Regex selectors
+              let brand = "";
+              const brands = ["Dell", "HP", "Lenovo", "Acer", "Asus", "MSI", "Samsung", "LG"];
+              for (const b of brands) {
+                if (new RegExp(b, "i").test(text)) {
+                  brand = b;
+                  break;
+                }
+              }
+              const serialMatch = text.match(/S\/N\s*[:\s]+([A-Z0-9]+)/i) || text.match(/Serial\s*[:\s]+([A-Z0-9]+)/i) || text.match(/Serial\s*No[:\s]+([A-Z0-9]+)/i);
+              const tagMatch = text.match(/Service\s*Tag\s*[:\s]+([A-Z0-9]+)/i) || text.match(/S\/T\s*[:\s]+([A-Z0-9]+)/i);
+              const modelMatch = text.match(/Model\s*[:\s]+([A-Z0-9\-]+)/i) || text.match(/Model\s*No[:\s]+([A-Z0-9\-]+)/i);
+
+              const serial = serialMatch ? serialMatch[1].trim() : "";
+              const tag = tagMatch ? tagMatch[1].trim() : "";
+              const model = modelMatch ? modelMatch[1].trim() : "";
+
+              setInvForm((prev: any) => ({
+                ...prev,
+                brand: brand || prev.brand,
+                serial_number: serial || prev.serial_number,
+                service_tag: tag || prev.service_tag,
+                model_number: model || prev.model_number
+              }));
+              setOcrResult(`Parsed Sticker! Brand: ${brand || "Not parsed"}, Serial: ${serial || "Not parsed"}, Tag: ${tag || "Not parsed"}. Confidence: ${confidence}%`);
+            } else {
+              setOcrResult("OCR dynamic module loading. Please try again in a few seconds.");
+            }
+          } catch (err: any) {
+            console.error(err);
+            setOcrResult("OCR error. Please manually enter specs.");
+          } finally {
+            setOcrLoading(false);
+          }
+        };
+
+        // Open print label popup
+        const triggerPrintLabel = (asset: any) => {
+          setPrintAsset(asset);
+          setShowPrintModal(true);
+        };
+
+        return (
+          <div className="space-y-6 animate-float-up text-left">
+            {/* ITAM Metrics Board */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="glass-card p-4 border border-slate-200/50 dark:border-zinc-800/50 flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Total Active Assets</span>
+                <span className="text-2xl font-black text-slate-800 dark:text-white mt-1">{totalAssets}</span>
+                <div className="flex gap-2 mt-2 text-[9px] font-semibold text-slate-400">
+                  <span>Working: {workingAssets}</span>
+                  <span>Spares: {spareAssets}</span>
                 </div>
+              </div>
+              
+              <div className="glass-card p-4 border border-slate-200/50 dark:border-zinc-800/50 flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Faulty & Repair Status</span>
+                <span className="text-2xl font-black text-rose-600 dark:text-rose-500 mt-1">{faultyAssets + repairAssets}</span>
+                <div className="flex gap-2 mt-2 text-[9px] font-semibold text-slate-400">
+                  <span>Damaged: {faultyAssets}</span>
+                  <span>In Repair: {repairAssets}</span>
+                </div>
+              </div>
 
-                <form onSubmit={(e) => onSaveInventory(e, invForm)} className="space-y-4 text-xs font-semibold text-slate-700 dark:text-slate-305">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Target Laboratory</label>
-                      <select
-                        value={invForm.lab_id}
-                        onChange={(e) => setInvForm({ ...invForm, lab_id: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 rounded-xl outline-none text-slate-800 dark:text-white"
-                        required
-                      >
-                        <option value="">Select Laboratory</option>
-                        {laboratories.map(lab => <option key={lab.id} value={lab.id}>{lab.name} ({lab.code})</option>)}
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Device Type</label>
-                      <select
-                        value={invForm.device_type}
-                        onChange={(e) => setInvForm({ ...invForm, device_type: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 rounded-xl outline-none text-slate-855 dark:text-slate-255"
-                      >
-                        <option value="Desktop">Desktop PC</option>
-                        <option value="Laptop">Laptop</option>
-                        <option value="Printer">Printer</option>
-                        <option value="Projector">Projector</option>
-                        <option value="UPS">UPS Unit</option>
-                        <option value="Network Device">Network Device</option>
-                      </select>
-                    </div>
-                  </div>
+              <div className="glass-card p-4 border border-slate-200/50 dark:border-zinc-800/50 flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Network Connectivity</span>
+                <span className="text-2xl font-black text-emerald-500 mt-1">{networkOnline} <span className="text-xs text-slate-400 font-bold">Online</span></span>
+                <div className="flex gap-2 mt-2 text-[9px] font-semibold text-slate-400">
+                  <span>Offline: {networkOffline}</span>
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Asset Number (Unique ID)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. SUAS-COMP-101"
-                        value={invForm.asset_number}
-                        onChange={(e) => setInvForm({ ...invForm, asset_number: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white font-mono"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Purchase Date</label>
-                      <input
-                        type="date"
-                        value={invForm.purchase_date}
-                        onChange={(e) => setInvForm({ ...invForm, purchase_date: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white"
-                        required
-                      />
-                    </div>
-                  </div>
+              <div className="glass-card p-4 border border-slate-200/50 dark:border-zinc-800/50 flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Warranty Alerts</span>
+                <span className="text-2xl font-black text-amber-500 mt-1">{expired} <span className="text-xs text-slate-400 font-bold">Expired</span></span>
+                <div className="flex gap-2 mt-2 text-[9px] font-semibold text-amber-500">
+                  <span>7D Expiry: {expiry7}</span>
+                  <span>30D Expiry: {expiry30}</span>
+                </div>
+              </div>
+            </div>
 
-                  {(invForm.device_type === "Desktop" || invForm.device_type === "Laptop") && (
-                    <>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="space-y-1">
-                          <label className="text-[9px] uppercase tracking-wider block text-slate-400">CPU Specs</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Intel i7"
-                            value={invForm.cpu}
-                            onChange={(e) => setInvForm({ ...invForm, cpu: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] uppercase tracking-wider block text-slate-400">RAM Size</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 16 GB"
-                            value={invForm.ram}
-                            onChange={(e) => setInvForm({ ...invForm, ram: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] uppercase tracking-wider block text-slate-400">Storage Size</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 1 TB SSD"
-                            value={invForm.storage}
-                            onChange={(e) => setInvForm({ ...invForm, storage: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white"
-                          />
-                        </div>
+            {/* Lab Slots Occupancy Dashboard */}
+            <div className="glass-card p-4 border border-slate-200/50 dark:border-zinc-800/50">
+              <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-3">Laboratories Slots & Capacity Utilization</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {(laboratories as any[]).map(lab => {
+                  const occupied = assetsList.filter(i => i.lab_id === lab.id).length;
+                  const capacity = lab.max_capacity || 60;
+                  const available = Math.max(0, capacity - occupied);
+                  return (
+                    <div key={lab.id} className="p-3 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800">
+                      <div className="flex justify-between text-[11px] font-extrabold text-slate-700 dark:text-slate-300">
+                        <span>🏢 {lab.name} ({lab.code})</span>
+                        <span>{occupied} / {capacity}</span>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] uppercase tracking-wider block text-slate-400">Monitor Specifications</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. HP 22inch Full HD Monitor"
-                          value={invForm.monitor}
-                          onChange={(e) => setInvForm({ ...invForm, monitor: e.target.value })}
-                          className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-805 dark:text-white"
+                      <div className="progress-bar-track mt-1.5 h-1.5 bg-slate-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                        <div 
+                          style={{ width: `${Math.min(100, (occupied / capacity) * 100)}%` }} 
+                          className={`h-full rounded-full transition-all ${occupied >= capacity ? "bg-rose-500" : available <= 5 ? "bg-amber-500" : "bg-emerald-500"}`}
                         />
                       </div>
-                    </>
-                  )}
-
-                  {invForm.device_type === "Printer" && (
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Printer Details</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Canon Laser LBP2900B"
-                        value={invForm.printer_details}
-                        onChange={(e) => setInvForm({ ...invForm, printer_details: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white"
-                      />
+                      <div className="flex justify-between text-[9px] text-slate-400 mt-1 font-semibold items-center">
+                        <span>Available: {available} slots</span>
+                        <span className="flex items-center gap-1 font-black">
+                          <span className={`w-1.5 h-1.5 rounded-full ${occupied >= capacity ? "bg-red-500 animate-pulse" : available <= 5 ? "bg-amber-500" : "bg-emerald-500"}`} />
+                          <span className={occupied >= capacity ? "text-red-500" : available <= 5 ? "text-amber-500" : "text-emerald-500"}>
+                            {occupied >= capacity ? "Full" : available <= 5 ? "Nearly Full" : "Available"}
+                          </span>
+                        </span>
+                      </div>
                     </div>
-                  )}
+                  );
+                })}
+              </div>
+            </div>
 
-                  {invForm.device_type === "Projector" && (
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Projector Details</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Epson EB-E01 ceiling projector"
-                        value={invForm.projector_details}
-                        onChange={(e) => setInvForm({ ...invForm, projector_details: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white"
-                      />
-                    </div>
+            {/* Toolbar Filters & Action Controls */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                {/* Search field */}
+                <div className="relative w-full md:w-48">
+                  <input
+                    type="text"
+                    placeholder="Search serial, IP, IDs..."
+                    value={globalSearch}
+                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl outline-none bg-white dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300"
+                  />
+                  <Search size={13} className="absolute left-2.5 top-[10px] text-slate-400" />
+                  {globalSearch && (
+                    <button onClick={() => setGlobalSearch("")} className="absolute right-2.5 top-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                      <X size={12} />
+                    </button>
                   )}
+                </div>
 
-                  {invForm.device_type === "UPS" && (
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">UPS Unit Details</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. APC Smart-UPS 5KVA"
-                        value={invForm.ups_details}
-                        onChange={(e) => setInvForm({ ...invForm, ups_details: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white"
-                      />
-                    </div>
-                  )}
+                <div className="relative md:w-36">
+                  <select
+                    value={invLabFilter}
+                    onChange={(e) => setInvLabFilter(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-xl outline-none appearance-none bg-white dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 text-slate-750 dark:text-slate-350 pr-8"
+                  >
+                    <option value="All">All Labs</option>
+                    {LAB_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2.5 top-[10px] text-slate-400 pointer-events-none" />
+                </div>
+                <div className="relative md:w-36">
+                  <select
+                    value={invTypeFilter}
+                    onChange={(e) => setInvTypeFilter(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-xl outline-none appearance-none bg-white dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 text-slate-750 dark:text-slate-350 pr-8"
+                  >
+                    <option value="All">All Types</option>
+                    <option value="CPU">CPU Workstation</option>
+                    <option value="Monitor">Monitor screen</option>
+                    <option value="Laptop">Laptop PC</option>
+                    <option value="Printer">Printer unit</option>
+                    <option value="Projector">Projector</option>
+                    <option value="UPS">UPS Battery</option>
+                    <option value="Keyboard">Keyboard</option>
+                    <option value="Mouse">Mouse</option>
+                    <option value="Webcam">Webcam</option>
+                    <option value="Speakers">Speakers</option>
+                    <option value="Network Device">Network Switch</option>
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2.5 top-[10px] text-slate-400 pointer-events-none" />
+                </div>
+              </div>
 
-                  {invForm.device_type === "Network Device" && (
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Network Switch / Router Details</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Cisco 24-Port Gigabit Switch"
-                        value={invForm.network_details}
-                        onChange={(e) => setInvForm({ ...invForm, network_details: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-800 dark:text-white"
-                      />
-                    </div>
-                  )}
+              {/* Advanced triggers */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={startScanner}
+                  className="px-3.5 py-1.8 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300 text-xs font-black rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Camera size={14} /> Scan Label
+                </button>
+                {isWriteAllowed && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setShowImportWizard(true);
+                        setWizardStep(1);
+                        setFileName("");
+                        setParsedRecords([]);
+                        setImportSummary(null);
+                        setImportProgress(0);
+                        setEstimatedTime("");
+                      }}
+                      className="px-3.5 py-1.8 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs font-black rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FileSpreadsheet size={14} /> Import Wizard
+                    </button>
+                    <button
+                      onClick={() => {
+                        resetInvForm();
+                        setEditingInventory(null);
+                        setShowInventoryModal(true);
+                        setActiveModalTab("basic");
+                      }}
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-black rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus size={14} /> Add Asset
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Warranty Details</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 3 Years Warranty"
-                        value={invForm.warranty_details}
-                        onChange={(e) => setInvForm({ ...invForm, warranty_details: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-805 dark:text-white"
-                      />
+            {/* Webcam scanning view drawer */}
+            {webcamScanning && (
+              <div className="p-4 bg-slate-100 dark:bg-zinc-900 rounded-2xl flex flex-col items-center">
+                <div className="w-full flex justify-between items-center mb-3">
+                  <span className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider">Camera Scan Portal</span>
+                  <button onClick={() => setWebcamScanning(false)} className="p-1 rounded-lg bg-rose-50 text-suas-ruby hover:bg-rose-100 cursor-pointer">
+                    <X size={14} />
+                  </button>
+                </div>
+                <div id="reader" className="w-full max-w-[300px] overflow-hidden rounded-xl border border-slate-300 dark:border-zinc-800"></div>
+                <p className="text-[9px] text-slate-400 mt-2 font-bold uppercase tracking-wider text-center">Place barcode or QR in window box to scan</p>
+              </div>
+            )}
+
+            {/* Assets Inventory List Table */}
+            <div className="glass-card p-5 border border-slate-200/50 dark:border-zinc-800/50 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-zinc-850 text-slate-400 font-bold uppercase text-[10px]">
+                      <th className="sticky left-0 bg-slate-50 dark:bg-zinc-900/60 z-20 min-w-[130px] py-3 px-2 border-b border-slate-200 dark:border-zinc-850">Global Asset ID</th>
+                      <th className="sticky left-[130px] bg-slate-50 dark:bg-zinc-900/60 z-20 min-w-[110px] py-3 px-2 border-b border-slate-200 dark:border-zinc-850">Lab Asset ID</th>
+                      <th className="py-3 px-2 min-w-[140px]">Lab / Purpose</th>
+                      <th className="py-3 px-2 min-w-[110px]">Device Type</th>
+                      <th className="py-3 px-2 min-w-[150px]">Brand &amp; Model</th>
+                      <th className="py-3 px-2 min-w-[160px]">Serial / Service Tag</th>
+                      <th className="py-3 px-2 min-w-[110px]">Network Status</th>
+                      <th className="sticky right-[120px] bg-slate-50 dark:bg-zinc-900/60 z-20 min-w-[100px] py-3 px-2 border-b border-slate-200 dark:border-zinc-850">Status</th>
+                      <th className="sticky right-0 bg-slate-50 dark:bg-zinc-900/60 z-20 min-w-[120px] py-3 px-2 border-b border-slate-200 dark:border-zinc-850 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-850 font-semibold text-slate-700 dark:text-slate-300">
+                    {filteredAssets.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-8 text-center text-slate-500 italic">No inventory assets matched your search parameters.</td>
+                      </tr>
+                    ) : (
+                      filteredAssets.map((item: any) => {
+                        const isExpanded = expandedAssetRow === item.uuid;
+                        return (
+                          <React.Fragment key={item.uuid || item.id}>
+                            <tr className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/30 group transition">
+                              <td className="sticky left-0 bg-white dark:bg-zinc-950 group-hover:bg-slate-50 dark:group-hover:bg-zinc-900/50 z-10 transition-all py-3 px-2 font-mono font-black text-slate-900 dark:text-white">{item.global_asset_id || "N/A"}</td>
+                              <td className="sticky left-[130px] bg-white dark:bg-zinc-950 group-hover:bg-slate-50 dark:group-hover:bg-zinc-900/50 z-10 transition-all py-3 px-2 font-mono font-black text-suas-ruby dark:text-suas-ruby-neon">{item.lab_asset_id || item.asset_number}</td>
+                              <td className="py-3 px-2">🏢 {item.lab_name}</td>
+                              <td className="py-3 px-2">{item.device_type}</td>
+                              <td className="py-3 px-2">{item.brand} {item.model_number}</td>
+                              <td className="py-3 px-2 font-mono text-[10px]">{item.serial_number || item.service_tag ? `${item.serial_number || "-"}/${item.service_tag || "-"}` : "-"}</td>
+                              <td className="py-3 px-2">
+                                <span className={`inline-flex items-center gap-1 text-[9px] ${item.network_status === "Online" ? "text-emerald-500" : "text-slate-400"}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${item.network_status === "Online" ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                                  {item.network_status || "Offline"}
+                                </span>
+                              </td>
+                              <td className="sticky right-[120px] bg-white dark:bg-zinc-950 group-hover:bg-slate-50 dark:group-hover:bg-zinc-900/50 z-10 transition-all py-3 px-2">
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                                  item.status === "Working" || item.status === "Active" || item.status === "Installed" ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600"
+                                : item.status === "Spare" ? "bg-slate-50 dark:bg-zinc-900 text-slate-500"
+                                : item.status === "Under Repair" || item.status === "Maintenance" ? "bg-amber-50 dark:bg-amber-950/20 text-amber-600"
+                                : "bg-rose-50 dark:bg-rose-950/20 text-suas-ruby"
+                                }`}>
+                                  {item.status}
+                                </span>
+                              </td>
+                              <td className="sticky right-0 bg-white dark:bg-zinc-950 group-hover:bg-slate-50 dark:group-hover:bg-zinc-900/50 z-10 transition-all py-3 px-2 text-right space-x-1.5">
+                                <button
+                                  onClick={() => setExpandedAssetRow(isExpanded ? null : item.uuid)}
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-slate-600 dark:text-slate-350 text-[10px] rounded-lg cursor-pointer"
+                                >
+                                  Details
+                                </button>
+                                {isWriteAllowed && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        populateInvForm(item);
+                                        setEditingInventory(item);
+                                        setShowInventoryModal(true);
+                                        setActiveModalTab("basic");
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-slate-805 dark:hover:text-white cursor-pointer inline-block align-middle"
+                                      title="Edit specifications"
+                                    >
+                                      <Edit size={13} />
+                                    </button>
+                                    <button
+                                      onClick={() => triggerPrintLabel(item)}
+                                      className="p-1 text-slate-400 hover:text-slate-805 dark:hover:text-white cursor-pointer inline-block align-middle"
+                                      title="Print Label"
+                                    >
+                                      <Printer size={13} />
+                                    </button>
+                                    <button
+                                      onClick={() => item.uuid && onDeleteInventory(item.id || item.uuid)}
+                                      className="p-1 text-rose-600 hover:text-rose-850 cursor-pointer inline-block align-middle"
+                                      title="Delete"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                            
+                            {/* Expanded Details Drawer */}
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={9} className="bg-slate-50/50 dark:bg-zinc-900/20 p-4 border-t border-b border-slate-100 dark:border-zinc-800">
+                                  <div className="mb-3 pb-2 border-b border-slate-200 dark:border-zinc-800/60">
+                                    <h4 className="text-xs font-black text-suas-ruby dark:text-suas-ruby-neon uppercase tracking-wider">{item.display_name || `${item.lab_name} - ${item.asset_number}`}</h4>
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    {/* Column 1: Hardware & Network details */}
+                                    <div className="space-y-2">
+                                      <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Device Specifications &amp; Config</h5>
+                                      <div className="space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
+                                        <div><span className="font-bold">Model Number:</span> {item.model_number || "-"}</div>
+                                        <div><span className="font-bold">Processor Specs:</span> {item.processor || "-"}</div>
+                                        <div><span className="font-bold">RAM Memory:</span> {item.ram || "-"}</div>
+                                        <div><span className="font-bold">HDD/SSD Storage:</span> {item.storage || "-"} ({item.storage_type || "-"})</div>
+                                        <div><span className="font-bold">OS Version:</span> {item.operating_system || "-"}</div>
+                                        <div><span className="font-bold">IPv4 Address:</span> {item.ipv4 || "DHCP Auto"} ({item.ip_type || "DHCP"})</div>
+                                        <div><span className="font-bold">MAC Address:</span> {item.mac_address || "-"}</div>
+                                        <div><span className="font-bold">Computer Hostname:</span> {item.hostname || "-"}</div>
+                                        {item.parent_cpu_lab_asset_id && (
+                                          <div><span className="font-bold text-rose-500">Chained to CPU:</span> {item.parent_cpu_lab_asset_id}</div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Column 2: Attachments / Photos */}
+                                    <div className="space-y-2">
+                                      <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider font-display">Asset Sticker Stickers &amp; Position</h5>
+                                      <div className="flex flex-wrap gap-2">
+                                        {item.attachments && item.attachments.length > 0 ? (
+                                          item.attachments.map((att: any, idx: number) => (
+                                            <div key={idx} className="relative group w-20 h-20 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800">
+                                              <img src={att.image_url} alt={att.image_type} className="w-full h-full object-cover" />
+                                              <span className="absolute bottom-0 inset-x-0 text-[8px] bg-slate-900/70 text-white font-extrabold p-0.5 text-center uppercase truncate">{att.image_type}</span>
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <span className="text-[11px] text-slate-400 italic">No attachments uploaded yet.</span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Column 3: Lifecycle Timeline Events */}
+                                    <div className="space-y-2">
+                                      <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Asset Lifecycle Timeline (Append-only)</h5>
+                                      <div className="relative pl-3 border-l border-slate-200 dark:border-zinc-800 space-y-3 max-h-[140px] overflow-y-auto">
+                                        {item.lifecycle && item.lifecycle.length > 0 ? (
+                                          item.lifecycle.map((ev: any, idx: number) => (
+                                            <div key={idx} className="relative text-[10px]">
+                                              <span className="absolute -left-[16px] top-[2px] w-2.5 h-2.5 rounded-full bg-suas-ruby border-2 border-white dark:border-zinc-950" />
+                                              <div className="font-extrabold text-slate-800 dark:text-white uppercase text-[8px]">{ev.event_type}</div>
+                                              <div className="text-slate-500 dark:text-slate-400">{ev.details}</div>
+                                              <div className="text-[8px] text-slate-400 font-bold">{new Date(ev.created_at).toLocaleString()} by {ev.created_by}</div>
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <div className="text-[11px] text-slate-400 italic">No timeline logs found.</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* STICKER PRINT MODAL */}
+            {showPrintModal && printAsset && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm print:p-0 print:bg-white print:dark:bg-white">
+                <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 max-w-sm w-full rounded-2xl shadow-2xl p-6 print:border-0 print:shadow-none print:w-auto print:max-w-none print:p-0 print:rounded-none">
+                  {/* size selection for screen only */}
+                  <div className="print:hidden">
+                    <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100 dark:border-zinc-850">
+                      <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider font-display">Print Asset Label</h4>
+                      <button onClick={() => setShowPrintModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X size={16} /></button>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase tracking-wider block text-slate-400">Vendor Details</label>
-                      <input
-                        type="text"
-                        placeholder="Name, Contact, Invoice No..."
-                        value={invForm.vendor_details}
-                        onChange={(e) => setInvForm({ ...invForm, vendor_details: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none text-slate-805 dark:text-white"
-                      />
+
+                    <div className="flex gap-2 bg-slate-100 dark:bg-zinc-900 p-1 rounded-lg mb-4">
+                      {["small", "medium", "large"].map(sz => (
+                        <button
+                          key={sz}
+                          onClick={() => setPrintSize(sz as any)}
+                          className={`flex-1 py-1 text-[9px] uppercase tracking-wider font-black rounded ${printSize === sz ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-white shadow" : "text-slate-400"}`}
+                        >
+                          {sz === "small" ? "30x20 mm" : sz === "medium" ? "50x30 mm" : "100x50 mm"}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[9px] uppercase tracking-wider block text-slate-400">Asset Status</label>
-                    <select
-                      value={invForm.status}
-                      onChange={(e) => setInvForm({ ...invForm, status: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 rounded-xl outline-none text-slate-855 dark:text-slate-250"
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Under Repair">Under Repair</option>
-                      <option value="Scrapped">Scrapped</option>
-                    </select>
+                  {/* Print Sticker Frame */}
+                  <div 
+                    id="sticker-label"
+                    className={`mx-auto bg-white border border-slate-350 p-3 text-slate-900 text-left flex flex-col justify-between ${
+                      printSize === "small" ? "w-[240px] h-[160px] text-[8px]" 
+                    : printSize === "medium" ? "w-[360px] h-[220px] text-[10px]" 
+                    : "w-[500px] h-[300px] text-xs p-6"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start pb-1.5 border-b border-slate-300">
+                      <div>
+                        <div className="font-extrabold text-[10px] uppercase tracking-wider text-rose-700">SCSIT</div>
+                        <div className="text-[8px] font-bold text-slate-500 uppercase">{printAsset.lab_name}</div>
+                      </div>
+                      <div className="text-right text-[8px] text-slate-400">Printed: {new Date().toLocaleDateString()}</div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 my-2 items-center">
+                      <div className="col-span-2 space-y-1">
+                        <div><span className="font-extrabold block text-[8px] uppercase text-slate-400">Lab Asset ID</span> <span className="font-black text-rose-600 text-xs font-mono">{printAsset.lab_asset_id || printAsset.asset_number}</span></div>
+                        <div><span className="font-extrabold block text-[8px] uppercase text-slate-400">Asset ID</span> <span className="font-bold text-slate-800 font-mono">{printAsset.global_asset_id}</span></div>
+                        <div className="grid grid-cols-2 gap-1.5 text-[9px]">
+                          <div><span className="font-extrabold block text-[8px] uppercase text-slate-400">Device</span> {printAsset.device_type}</div>
+                          <div><span className="font-extrabold block text-[8px] uppercase text-slate-400">Brand</span> {printAsset.brand}</div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5 text-[9px]">
+                          <div><span className="font-extrabold block text-[8px] uppercase text-slate-400">Model</span> {printAsset.model_number}</div>
+                          <div><span className="font-extrabold block text-[8px] uppercase text-slate-400">Serial</span> {printAsset.serial_number || "N/A"}</div>
+                        </div>
+                      </div>
+                      
+                      {/* QR code */}
+                      <div className="w-full flex items-center justify-center">
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                            JSON.stringify({
+                              AssetID: printAsset.global_asset_id,
+                              LabAssetID: printAsset.lab_asset_id || printAsset.asset_number,
+                              Lab: printAsset.lab_name,
+                              AssetType: printAsset.device_type,
+                              Brand: printAsset.brand,
+                              Model: printAsset.model_number,
+                              Serial: printAsset.serial_number,
+                              Status: printAsset.status
+                            })
+                          )}`} 
+                          alt="Sticker QR" 
+                          className="w-20 h-20 object-contain border border-slate-100 p-0.5 rounded"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Code39 Barcode rendering */}
+                    <div className="mt-1 border-t border-slate-200 pt-2 text-center">
+                      <Code39Barcode value={printAsset.lab_asset_id || printAsset.asset_number} />
+                      <div className="text-[8px] font-mono tracking-widest uppercase mt-0.5 text-center">{printAsset.lab_asset_id || printAsset.asset_number}</div>
+                    </div>
                   </div>
 
                   <button
-                    type="submit"
-                    className="w-full py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-extrabold text-xs uppercase tracking-wider rounded-xl hover:bg-suas-ruby dark:hover:bg-suas-ruby-neon hover:text-white transition shadow-md cursor-pointer"
+                    onClick={() => window.print()}
+                    className="w-full mt-4 py-2 bg-slate-900 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl print:hidden hover:bg-rose-600 transition cursor-pointer"
                   >
-                    Save Asset Record
+                    Print Sticker Label
                   </button>
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </div>
-      )}
+                </div>
+              </div>
+            )}
+
+            {/* SMART EXCEL IMPORT WIZARD MODAL */}
+            {showImportWizard && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm">
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-white dark:bg-zinc-950 border border-slate-200/50 dark:border-zinc-800/50 max-w-4xl w-full rounded-2xl shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto relative text-left"
+                >
+                  <button
+                    onClick={() => { if (!isImporting) setShowImportWizard(false); }}
+                    disabled={isImporting}
+                    className="absolute top-4 right-4 text-slate-400 hover:text-slate-655 transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+
+                  <div className="pb-3 border-b border-slate-100 dark:border-zinc-850 mb-5">
+                    <h4 className="text-base font-black text-slate-800 dark:text-white font-display uppercase tracking-wider flex items-center gap-2">
+                      <FileSpreadsheet className="text-emerald-500" size={18} /> Smart Excel Import Wizard
+                    </h4>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Bulk migrate and synchronize computer assets from spreadsheets securely.</p>
+                  </div>
+
+                  {/* STEPPER PROGRESS INDICATOR */}
+                  <div className="grid grid-cols-4 gap-2 mb-6 text-center text-[9px] font-black uppercase tracking-wider text-slate-400">
+                    {[
+                      { step: 1, label: "1. Upload File" },
+                      { step: 2, label: "2. Column Mapping" },
+                      { step: 3, label: "3. Preview & Run" },
+                      { step: 4, label: "4. Final Summary" }
+                    ].map(s => (
+                      <div
+                        key={s.step}
+                        className={`py-1.5 rounded-lg border transition ${
+                          wizardStep === s.step 
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-600 dark:bg-emerald-950/20 dark:border-emerald-900/40" 
+                            : wizardStep > s.step 
+                              ? "bg-slate-50 border-slate-250 text-slate-600 dark:bg-zinc-900 dark:border-zinc-800" 
+                              : "border-slate-100 dark:border-zinc-900 text-slate-350"
+                        }`}
+                      >
+                        {s.label}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* PROGRESS BAR OVERLAY */}
+                  {isImporting && (
+                    <div className="mb-6 p-5 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850 space-y-3">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-extrabold text-slate-700 dark:text-slate-350 flex items-center gap-2">
+                          <RefreshCw size={14} className="animate-spin text-emerald-500" />
+                          Processing database transaction batch...
+                        </span>
+                        <span className="font-black text-emerald-600 font-mono">{importProgress}%</span>
+                      </div>
+                      <div className="h-2 bg-slate-200 dark:bg-zinc-850 rounded-full overflow-hidden">
+                        <div style={{ width: `${importProgress}%` }} className="h-full bg-emerald-500 rounded-full transition-all duration-150" />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-500">
+                        <span>Do not close this window or refresh the browser.</span>
+                        <span className="font-bold">{estimatedTime}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 1: UPLOAD SCREEN */}
+                  {wizardStep === 1 && (
+                    <div className="space-y-6">
+                      <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        className={`p-8 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition ${
+                          dragOver 
+                            ? "border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/10" 
+                            : "border-slate-200 dark:border-zinc-800 hover:border-slate-350 bg-slate-50/50 dark:bg-zinc-900/20"
+                        }`}
+                        onClick={() => document.getElementById("excel-wizard-file")?.click()}
+                      >
+                        <input
+                          id="excel-wizard-file"
+                          type="file"
+                          accept=".xlsx, .xls, .csv"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(file);
+                          }}
+                          className="hidden"
+                        />
+                        <Upload className="text-slate-400 mb-3" size={32} />
+                        <span className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider block">Drag &amp; Drop Spreadsheet File</span>
+                        <span className="text-[10px] text-slate-455 mt-1 block">Supports Microsoft Excel (.xlsx, .xls) and standard comma-separated CSV values.</span>
+                        <button className="mt-4 px-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300 text-xs font-black rounded-xl hover:border-slate-350 cursor-pointer shadow-sm">
+                          Browse Files
+                        </button>
+                      </div>
+
+                      <div className="flex justify-between items-center p-4 bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/50 rounded-xl">
+                        <div className="space-y-0.5 text-xs text-left">
+                          <div className="font-extrabold text-amber-800 dark:text-amber-300">Need the standard migration spreadsheet layout?</div>
+                          <div className="text-[10px] text-slate-500">Download our formatted template matching all system metadata fields.</div>
+                        </div>
+                        <button
+                          onClick={handleDownloadTemplate}
+                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-xl cursor-pointer transition flex items-center gap-1.5 shrink-0 shadow-sm"
+                        >
+                          <Download size={14} /> Template
+                        </button>
+                      </div>
+
+                      {/* PREVIOUS RUNS HISTORICAL LOGS */}
+                      <div className="space-y-2 text-left">
+                        <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Previous Import Logs Run</h5>
+                        <div className="border border-slate-150 dark:border-zinc-850 rounded-xl overflow-hidden text-xs">
+                          {loadingImportLogs ? (
+                            <div className="p-8 text-center text-slate-500 italic">Loading logs list...</div>
+                          ) : importLogs.length === 0 ? (
+                            <div className="p-8 text-center text-slate-500 italic">No previous Excel imports recorded in database logs.</div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-slate-50/80 dark:bg-zinc-900/50 border-b border-slate-150 dark:border-zinc-850 text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                                    <th className="py-2 px-3">Date</th>
+                                    <th className="py-2 px-3">File Name</th>
+                                    <th className="py-2 px-3">User</th>
+                                    <th className="py-2 px-3 text-center">Imported</th>
+                                    <th className="py-2 px-3 text-center">Updated</th>
+                                    <th className="py-2 px-3 text-center">Skipped</th>
+                                    <th className="py-2 px-3 text-center">Failed</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-zinc-850 font-semibold text-slate-700 dark:text-slate-300">
+                                  {importLogs.map((log) => (
+                                    <tr key={log.id} className="hover:bg-slate-50/30 dark:hover:bg-zinc-900/20">
+                                      <td className="py-2 px-3 font-mono text-[10px]">{new Date(log.created_at).toLocaleString("en-IN")}</td>
+                                      <td className="py-2 px-3 max-w-[150px] truncate" title={log.file_name}>{log.file_name}</td>
+                                      <td className="py-2 px-3">{log.imported_by}</td>
+                                      <td className="py-2 px-3 text-center font-bold text-emerald-600">{log.imported}</td>
+                                      <td className="py-2 px-3 text-center font-bold text-blue-500">{log.updated}</td>
+                                      <td className="py-2 px-3 text-center font-bold text-slate-400">{log.skipped}</td>
+                                      <td className="py-2 px-3 text-center font-bold text-rose-500">{log.failed}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 2: COLUMN MAPPING SCREEN */}
+                  {wizardStep === 2 && (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-slate-50 dark:bg-zinc-900 rounded-xl text-[10px] text-slate-550 border border-slate-150 dark:border-zinc-850 text-left">
+                        <span className="font-extrabold block text-slate-750 dark:text-white uppercase mb-1">Verify Automatic Matches</span>
+                        We parsed the column headers of <strong className="text-slate-800 dark:text-white">{fileName}</strong>. Confirm the binding schema details below. Unbound Excel headers will be ignored.
+                      </div>
+
+                      <div className="border border-slate-150 dark:border-zinc-850 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead>
+                            <tr className="bg-slate-50 dark:bg-zinc-900 border-b border-slate-150 dark:border-zinc-850 text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                              <th className="py-2.5 px-4">Excel Column Header Name</th>
+                              <th className="py-2.5 px-4">Maps to Database Field</th>
+                              <th className="py-2.5 px-4 text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-zinc-850 font-semibold text-slate-700 dark:text-slate-350">
+                            {excelHeaders.map(hdr => (
+                              <tr key={hdr} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/10">
+                                <td className="py-2.5 px-4 font-bold">{hdr}</td>
+                                <td className="py-2.5 px-4">
+                                  <select
+                                    value={columnMappings[hdr] || ""}
+                                    onChange={e => setColumnMappings({ ...columnMappings, [hdr]: e.target.value })}
+                                    className="px-2 py-1 text-xs border border-slate-200 dark:border-zinc-850 rounded-lg bg-white dark:bg-zinc-900 outline-none text-slate-800 dark:text-white font-bold w-48 focus:ring-1 focus:ring-emerald-500"
+                                  >
+                                    <option value="">Ignore Column</option>
+                                    <option value="lab_name">Laboratory Name</option>
+                                    <option value="lab_asset_id">Lab Asset ID (Visible)</option>
+                                    <option value="global_asset_id">Global Asset ID (Permanent)</option>
+                                    <option value="asset_type">Asset Device Type (e.g. CPU)</option>
+                                    <option value="brand">Brand Manufacturer</option>
+                                    <option value="model_number">Model Number</option>
+                                    <option value="serial_number">Serial Number / Service Tag</option>
+                                    <option value="service_tag">Dell Service Tag</option>
+                                    <option value="ipv4">IPv4 IP Address</option>
+                                    <option value="mac_address">MAC Address</option>
+                                    <option value="computer_name">Computer Name</option>
+                                    <option value="hostname">Hostname Domain</option>
+                                    <option value="processor">Processor CPU Specs</option>
+                                    <option value="ram">RAM Memory Capacity</option>
+                                    <option value="storage">Storage Drive Capacity</option>
+                                    <option value="storage_type">Storage Media Type (HDD/SSD)</option>
+                                    <option value="operating_system">Operating System</option>
+                                    <option value="purchase_date">Purchase Date (YYYY-MM-DD)</option>
+                                    <option value="warranty_end">Warranty Expiry Date</option>
+                                    <option value="status">Status (Working/Faulty/Repair)</option>
+                                  </select>
+                                </td>
+                                <td className="py-2.5 px-4 text-center">
+                                  {columnMappings[hdr] ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[8px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 font-black uppercase whitespace-nowrap">Mapped</span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[8px] bg-slate-100 text-slate-500 dark:bg-zinc-900 font-black uppercase whitespace-nowrap">Ignored</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex justify-between items-center border-t border-slate-100 dark:border-zinc-850 pt-4">
+                        <button
+                          onClick={() => setWizardStep(1)}
+                          className="px-4 py-2 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400 text-xs font-black rounded-xl hover:bg-slate-50 cursor-pointer transition"
+                        >
+                          Back
+                        </button>
+                        <button
+                          onClick={() => setWizardStep(3)}
+                          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl cursor-pointer transition shadow-sm"
+                        >
+                          Validate &amp; Preview
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 3: PREVIEW & RUN SCREEN */}
+                  {wizardStep === 3 && (() => {
+                    const mapped = getMappedRecords();
+                    const totalRows = mapped.length;
+
+                    // Simple client-side validation analysis
+                    const errorsList: { row: number; error: string }[] = [];
+                    let validCount = 0;
+                    let dupCount = 0;
+
+                    const seenSerials = new Set();
+                    const seenIps = new Set();
+
+                    mapped.forEach((item, idx) => {
+                      const rowNum = idx + 2;
+                      if (!item.lab_name) {
+                        errorsList.push({ row: rowNum, error: "Missing Laboratory Name parameter." });
+                      } else {
+                        // Check if lab name matches seeded values
+                        const labMatch = laboratories.find(l => 
+                          l.name.toLowerCase() === String(item.lab_name).trim().toLowerCase() ||
+                          l.code.toLowerCase() === String(item.lab_name).trim().toLowerCase()
+                        );
+                        if (!labMatch) {
+                          errorsList.push({ row: rowNum, error: `Laboratory name '${item.lab_name}' does not match any system values.` });
+                        }
+                      }
+                      if (!item.asset_type) {
+                        errorsList.push({ row: rowNum, error: "Missing Asset Device Type parameter." });
+                      }
+
+                      // Check sheet duplicates
+                      if (item.serial_number) {
+                        const serialClean = String(item.serial_number).trim().toLowerCase();
+                        if (seenSerials.has(serialClean)) {
+                          dupCount++;
+                          errorsList.push({ row: rowNum, error: `Spreadsheet duplicate: Serial Number '${item.serial_number}' repeated.` });
+                        } else {
+                          seenSerials.add(serialClean);
+                        }
+                      }
+
+                      if (item.ipv4 && String(item.ipv4).trim().toLowerCase() !== "dhcp") {
+                        const ipClean = String(item.ipv4).trim().toLowerCase();
+                        if (seenIps.has(ipClean)) {
+                          dupCount++;
+                          errorsList.push({ row: rowNum, error: `Spreadsheet duplicate: IP Address '${item.ipv4}' repeated.` });
+                        } else {
+                          seenIps.add(ipClean);
+                        }
+                      }
+                    });
+
+                    validCount = totalRows - errorsList.length;
+
+                    return (
+                      <div className="space-y-5 text-left">
+                        {/* Statistics Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                          <div className="p-3 bg-slate-50 dark:bg-zinc-900 border border-slate-150 dark:border-zinc-850 rounded-xl">
+                            <div className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Total Parse Rows</div>
+                            <div className="text-xl font-black text-slate-800 dark:text-white mt-0.5">{totalRows}</div>
+                          </div>
+                          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-150 dark:border-emerald-900/20 rounded-xl">
+                            <div className="text-[9px] uppercase tracking-wider font-bold text-emerald-600">Valid Rows</div>
+                            <div className="text-xl font-black text-emerald-600 mt-0.5">{validCount}</div>
+                          </div>
+                          <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-150 dark:border-amber-900/20 rounded-xl">
+                            <div className="text-[9px] uppercase tracking-wider font-bold text-amber-600">Sheet Duplicates</div>
+                            <div className="text-xl font-black text-amber-600 mt-0.5">{dupCount}</div>
+                          </div>
+                          <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-150 dark:border-rose-900/20 rounded-xl">
+                            <div className="text-[9px] uppercase tracking-wider font-bold text-rose-600">Validation Failures</div>
+                            <div className="text-xl font-black text-rose-600 mt-0.5">{errorsList.length}</div>
+                          </div>
+                        </div>
+
+                        {/* Error warnings preview drawer */}
+                        {errorsList.length > 0 && (
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-black uppercase text-rose-600 flex items-center gap-1"><AlertCircle size={12} /> Excel Validation Warnings ({errorsList.length})</span>
+                            <div className="border border-rose-150 dark:border-rose-950/40 rounded-xl bg-rose-50/20 dark:bg-rose-950/5 max-h-40 overflow-y-auto p-3.5 text-[11px] font-semibold text-rose-700 space-y-1">
+                              {errorsList.slice(0, 10).map((err, i) => (
+                                <div key={i}>Row {err.row}: <span className="font-extrabold">{err.error}</span></div>
+                              ))}
+                              {errorsList.length > 10 && (
+                                <div className="text-slate-500 italic pt-1">...and {errorsList.length - 10} more rows have errors. Download failed spreadsheet or correct headers.</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* OPTIONS PANEL CHECKBOXES */}
+                        <div className="p-4 rounded-xl border border-slate-150 dark:border-zinc-850 bg-slate-50/40 dark:bg-zinc-900/20 space-y-3">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Conflict Resolution &amp; Importer Options</span>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={importWizardOptions.importNewOnly}
+                                onChange={e => setImportWizardOptions({ 
+                                  ...importWizardOptions, 
+                                  importNewOnly: e.target.checked,
+                                  updateExisting: e.target.checked ? false : importWizardOptions.updateExisting
+                                })}
+                                className="w-3.5 h-3.5 accent-emerald-500"
+                              />
+                              <span>Import New Records Only</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={importWizardOptions.updateExisting}
+                                onChange={e => setImportWizardOptions({ 
+                                  ...importWizardOptions, 
+                                  updateExisting: e.target.checked,
+                                  importNewOnly: e.target.checked ? false : importWizardOptions.importNewOnly,
+                                  skipDuplicates: e.target.checked ? false : importWizardOptions.skipDuplicates
+                                })}
+                                className="w-3.5 h-3.5 accent-emerald-500"
+                              />
+                              <span>Update Existing Records</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={importWizardOptions.skipDuplicates}
+                                onChange={e => setImportWizardOptions({ 
+                                  ...importWizardOptions, 
+                                  skipDuplicates: e.target.checked,
+                                  updateExisting: e.target.checked ? false : importWizardOptions.updateExisting
+                                })}
+                                className="w-3.5 h-3.5 accent-emerald-500"
+                              />
+                              <span>Skip Duplicate Records</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={importWizardOptions.generateQr}
+                                className="w-3.5 h-3.5 accent-emerald-500"
+                                disabled
+                              />
+                              <span className="text-slate-400">Generate QR Codes &amp; Labels</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={importWizardOptions.generateLabId}
+                                onChange={e => setImportWizardOptions({ ...importWizardOptions, generateLabId: e.target.checked })}
+                                className="w-3.5 h-3.5 accent-emerald-500"
+                              />
+                              <span>Auto-Generate Missing Lab IDs</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={importWizardOptions.generateGlobalId}
+                                onChange={e => setImportWizardOptions({ ...importWizardOptions, generateGlobalId: e.target.checked })}
+                                className="w-3.5 h-3.5 accent-emerald-500"
+                              />
+                              <span>Auto-Generate Missing Global IDs</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center border-t border-slate-100 dark:border-zinc-850 pt-4">
+                          <button
+                            onClick={() => setWizardStep(2)}
+                            disabled={isImporting}
+                            className="px-4 py-2 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400 text-xs font-black rounded-xl hover:bg-slate-50 cursor-pointer transition disabled:opacity-30"
+                          >
+                            Back
+                          </button>
+                          
+                          <button
+                            onClick={executeBulkImport}
+                            disabled={isImporting || errorsList.length > 0}
+                            className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-zinc-800 dark:disabled:text-slate-500 text-white text-xs font-black rounded-xl cursor-pointer transition shadow-sm flex items-center gap-1.5"
+                          >
+                            {isImporting ? <RefreshCw className="animate-spin" size={14} /> : <Check size={14} />}
+                            {errorsList.length > 0 ? "Resolve Validation Errors First" : "Start Database Transaction"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* STEP 4: FINAL SUMMARY SCREEN */}
+                  {wizardStep === 4 && importSummary && (
+                    <div className="space-y-5 text-left">
+                      <div className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
+                        importSummary.failed > 0 
+                          ? "bg-rose-50 border-rose-200 dark:bg-rose-950/20 dark:border-rose-900/40" 
+                          : "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/40"
+                      }`}>
+                        <div className="p-2 rounded-xl bg-white dark:bg-zinc-900">
+                          {importSummary.failed > 0 ? (
+                            <AlertCircle className="text-rose-500" size={24} />
+                          ) : (
+                            <Check className="text-emerald-500" size={24} />
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">
+                            {importSummary.failed > 0 ? "Import Failed (Transaction Rolled Back)" : "Import Executed Successfully!"}
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            {importSummary.failed > 0 
+                              ? "Database transaction rolled back to protect schema integrity. Correct spreadsheet rows and re-upload."
+                              : "All verified changes have been successfully committed to database."
+                            }
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Summary Table Metrics */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-xs font-semibold">
+                        <div className="p-3.5 rounded-xl border border-slate-150 dark:border-zinc-850 bg-slate-50/50 dark:bg-zinc-900/40">
+                          <span className="text-slate-450 block uppercase text-[8px] font-black tracking-wider">Total Rows</span>
+                          <span className="text-xl font-black text-slate-800 dark:text-white mt-1 block">{importSummary.total}</span>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-emerald-150 dark:border-emerald-900/20 bg-emerald-50/10 dark:bg-emerald-950/5 text-emerald-600">
+                          <span className="text-emerald-555 block uppercase text-[8px] font-black tracking-wider">Imported</span>
+                          <span className="text-xl font-black mt-1 block">{importSummary.imported}</span>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-blue-150 dark:border-blue-900/20 bg-blue-50/10 dark:bg-blue-950/5 text-blue-500">
+                          <span className="text-blue-555 block uppercase text-[8px] font-black tracking-wider">Updated</span>
+                          <span className="text-xl font-black mt-1 block">{importSummary.updated}</span>
+                        </div>
+                        <div className="p-3.5 rounded-xl border border-rose-150 dark:border-rose-900/20 bg-rose-50/10 dark:bg-rose-950/5 text-rose-600">
+                          <span className="text-rose-555 block uppercase text-[8px] font-black tracking-wider">Failed</span>
+                          <span className="text-xl font-black mt-1 block">{importSummary.failed}</span>
+                        </div>
+                      </div>
+
+                      {/* Failed rows reason logging list */}
+                      {importSummary.failed > 0 && importSummary.errors && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-extrabold text-slate-650 dark:text-slate-350">Failed Row Reasons ({importSummary.failed})</span>
+                            <button
+                              onClick={handleDownloadFailedRecords}
+                              className="text-[10px] font-black text-rose-600 hover:text-rose-700 underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Download size={12} /> Download Failed Records xlsx
+                            </button>
+                          </div>
+                          <div className="border border-rose-150 dark:border-rose-950/50 rounded-xl bg-rose-50/10 dark:bg-rose-950/5 max-h-48 overflow-y-auto p-4 text-[11px] font-semibold text-rose-700 space-y-1.5">
+                            {importSummary.errors.slice(0, 20).map((err: any, i: number) => (
+                              <div key={i}>Row {err.row}: <span className="font-extrabold">{err.error}</span></div>
+                            ))}
+                            {importSummary.errors.length > 20 && (
+                              <div className="text-slate-550 font-black italic">...and {importSummary.errors.length - 20} more rows failed.</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end border-t border-slate-100 dark:border-zinc-850 pt-4">
+                        <button
+                          onClick={() => {
+                            setShowImportWizard(false);
+                            setWizardStep(1);
+                            setImportSummary(null);
+                          }}
+                          className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-xl cursor-pointer transition shadow-sm"
+                        >
+                          Close Wizard
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            )}
+
+            {/* INVENTORY CREATE / EDIT COMPREHENSIVE MODAL */}
+            {showInventoryModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm">
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-white dark:bg-zinc-950 border border-slate-200/50 dark:border-zinc-800/50 max-w-xl w-full rounded-2xl shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto relative text-left"
+                >
+                  <button onClick={() => setShowInventoryModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-655 transition"><X size={18} /></button>
+                  <div className="pb-3 border-b border-slate-100 dark:border-zinc-850 mb-4">
+                    <h4 className="text-base font-black text-slate-800 dark:text-white font-display uppercase tracking-wider">
+                      {editingInventory ? `Edit Asset: ${invForm.global_asset_id || "Active record"}` : "Deploy New IT Equipment Asset"}
+                    </h4>
+                  </div>
+
+                  {/* Duplicate warning banners */}
+                  {localWarnings.length > 0 && (
+                    <div className="mb-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-250 text-amber-700 dark:text-amber-400 text-[10px] space-y-1 font-bold">
+                      <div className="uppercase tracking-widest text-[9px] flex items-center gap-1.5">
+                        <AlertCircle size={12} /> Smart Duplicate Warning
+                      </div>
+                      {localWarnings.map((w, idx) => <div key={idx}>- {w}</div>)}
+                    </div>
+                  )}
+
+                  {/* Form tab navbar */}
+                  <div className="flex bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl mb-4">
+                    {["basic", "network", "peripherals", "photos"].map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setActiveModalTab(t as any)}
+                        className={`flex-1 py-1 text-[9px] font-black uppercase tracking-wider rounded transition-all cursor-pointer ${
+                          activeModalTab === t 
+                            ? "bg-white dark:bg-zinc-800 text-slate-905 dark:text-white shadow" 
+                            : "text-slate-400 hover:text-slate-655"
+                        }`}
+                      >
+                        {t === "basic" ? "Basic Specs" : t === "network" ? "Network & HW" : t === "peripherals" ? "Peripherals" : "OCR & Sticker"}
+                      </button>
+                    ))}
+                  </div>
+
+                  <form onSubmit={(e) => onSaveInventory(e, invForm)} className="space-y-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    
+                    {/* TAB 1: BASIC SPECS */}
+                    {activeModalTab === "basic" && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Target Laboratory</label>
+                            <select
+                              value={invForm.lab_id}
+                              onChange={(e) => setInvForm({ ...invForm, lab_id: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              required
+                            >
+                              <option value="">Select Lab</option>
+                              {laboratories.map(lab => <option key={lab.id} value={lab.id}>{lab.name} ({lab.code})</option>)}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Device Type</label>
+                            <select
+                              value={invForm.device_type}
+                              onChange={(e) => setInvForm({ ...invForm, device_type: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            >
+                              <option value="CPU">CPU Workstation</option>
+                              <option value="Monitor">Monitor screen</option>
+                              <option value="Laptop">Laptop PC</option>
+                              <option value="Printer">Printer unit</option>
+                              <option value="Projector">Projector</option>
+                              <option value="UPS">UPS battery</option>
+                              <option value="Keyboard">Keyboard</option>
+                              <option value="Mouse">Mouse</option>
+                              <option value="Webcam">Webcam</option>
+                              <option value="Speakers">Speakers</option>
+                              <option value="Network Device">Network Switch</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Brand</label>
+                            <input
+                              type="text"
+                              value={invForm.brand}
+                              onChange={(e) => setInvForm({ ...invForm, brand: e.target.value })}
+                              placeholder="e.g. Dell, HP"
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Model Name/Number</label>
+                            <input
+                              type="text"
+                              value={invForm.model_number}
+                              onChange={(e) => setInvForm({ ...invForm, model_number: e.target.value })}
+                              placeholder="e.g. OptiPlex 7090"
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Manufacturer</label>
+                            <input
+                              type="text"
+                              value={invForm.manufacturer}
+                              onChange={(e) => setInvForm({ ...invForm, manufacturer: e.target.value })}
+                              placeholder="e.g. Dell Inc."
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Serial Number (S/N)</label>
+                            <input
+                              type="text"
+                              value={invForm.serial_number}
+                              onChange={(e) => setInvForm({ ...invForm, serial_number: e.target.value })}
+                              placeholder="Required for duplication check"
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Service Tag / Asset Code</label>
+                            <input
+                              type="text"
+                              value={invForm.service_tag}
+                              onChange={(e) => setInvForm({ ...invForm, service_tag: e.target.value })}
+                              placeholder="Required for vendor warranty"
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Express Service Code</label>
+                            <input
+                              type="text"
+                              value={invForm.express_service_code || ""}
+                              onChange={(e) => setInvForm({ ...invForm, express_service_code: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">MTM Code</label>
+                            <input
+                              type="text"
+                              value={invForm.mtm || ""}
+                              onChange={(e) => setInvForm({ ...invForm, mtm: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Product Number</label>
+                            <input
+                              type="text"
+                              value={invForm.product_number || ""}
+                              onChange={(e) => setInvForm({ ...invForm, product_number: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Manufacture Date</label>
+                            <input
+                              type="date"
+                              value={invForm.manufacture_date || ""}
+                              onChange={(e) => setInvForm({ ...invForm, manufacture_date: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Purchase Date</label>
+                            <input
+                              type="date"
+                              value={invForm.purchase_date}
+                              onChange={(e) => setInvForm({ ...invForm, purchase_date: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Invoice Number</label>
+                            <input
+                              type="text"
+                              value={invForm.invoice_number || ""}
+                              onChange={(e) => setInvForm({ ...invForm, invoice_number: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Warranty Start</label>
+                            <input
+                              type="date"
+                              value={invForm.warranty_start || ""}
+                              onChange={(e) => setInvForm({ ...invForm, warranty_start: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Warranty End</label>
+                            <input
+                              type="date"
+                              value={invForm.warranty_end || ""}
+                              onChange={(e) => setInvForm({ ...invForm, warranty_end: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Vendor / Dealer</label>
+                            <input
+                              type="text"
+                              value={invForm.vendor}
+                              onChange={(e) => setInvForm({ ...invForm, vendor: e.target.value })}
+                              placeholder="Seller details"
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Barcode Value</label>
+                            <input
+                              type="text"
+                              value={invForm.barcode_data || ""}
+                              onChange={(e) => setInvForm({ ...invForm, barcode_data: e.target.value })}
+                              placeholder="Scan barcode directly here"
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none font-mono"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Deploy Status</label>
+                            <select
+                              value={invForm.status}
+                              onChange={(e) => setInvForm({ ...invForm, status: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 rounded-xl outline-none text-slate-800 dark:text-white"
+                            >
+                              <option value="Installed">Installed</option>
+                              <option value="Working">Working</option>
+                              <option value="Spare">Spare</option>
+                              <option value="Under Repair">Under Repair</option>
+                              <option value="Maintenance">Maintenance</option>
+                              <option value="Damaged">Damaged</option>
+                              <option value="Lost">Lost</option>
+                              <option value="Disposed">Disposed</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TAB 2: NETWORK & HARDWARE */}
+                    {activeModalTab === "network" && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Computer Name</label>
+                            <input
+                              type="text"
+                              value={invForm.computer_name || ""}
+                              onChange={(e) => setInvForm({ ...invForm, computer_name: e.target.value })}
+                              placeholder="e.g. LAB-A-PC10"
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Host Name</label>
+                            <input
+                              type="text"
+                              value={invForm.hostname || ""}
+                              onChange={(e) => setInvForm({ ...invForm, hostname: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">IP Type</label>
+                            <select
+                              value={invForm.ip_type}
+                              onChange={(e) => setInvForm({ ...invForm, ip_type: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 rounded-xl outline-none text-slate-800 dark:text-white"
+                            >
+                              <option value="DHCP">DHCP</option>
+                              <option value="Static">Static IP</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">IPv4 Address</label>
+                            <input
+                              type="text"
+                              value={invForm.ipv4 || ""}
+                              onChange={(e) => setInvForm({ ...invForm, ipv4: e.target.value })}
+                              placeholder="e.g. 192.168.10.12"
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none font-mono"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">IPv6 Address</label>
+                            <input
+                              type="text"
+                              value={invForm.ipv6 || ""}
+                              onChange={(e) => setInvForm({ ...invForm, ipv6: e.target.value })}
+                              placeholder="e.g. fe80::..."
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">MAC Address</label>
+                            <input
+                              type="text"
+                              value={invForm.mac_address || ""}
+                              onChange={(e) => setInvForm({ ...invForm, mac_address: e.target.value.toUpperCase() })}
+                              placeholder="e.g. 00:1A:2B:..."
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none font-mono"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Wi-Fi MAC</label>
+                            <input
+                              type="text"
+                              value={invForm.wifi_mac || ""}
+                              onChange={(e) => setInvForm({ ...invForm, wifi_mac: e.target.value.toUpperCase() })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none font-mono"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">LAN MAC</label>
+                            <input
+                              type="text"
+                              value={invForm.lan_mac || ""}
+                              onChange={(e) => setInvForm({ ...invForm, lan_mac: e.target.value.toUpperCase() })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Network Gateway</label>
+                            <input
+                              type="text"
+                              value={invForm.gateway || ""}
+                              onChange={(e) => setInvForm({ ...invForm, gateway: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">DNS Server</label>
+                            <input
+                              type="text"
+                              value={invForm.dns || ""}
+                              onChange={(e) => setInvForm({ ...invForm, dns: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] uppercase tracking-wider block text-slate-400">Active Domain</label>
+                            <input
+                              type="text"
+                              value={invForm.domain || ""}
+                              onChange={(e) => setInvForm({ ...invForm, domain: e.target.value })}
+                              className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-6 py-1">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              checked={invForm.reserved_ip === true || invForm.reserved_ip === 'true'}
+                              onChange={(e) => setInvForm({ ...invForm, reserved_ip: e.target.checked })}
+                              id="res_ip"
+                              className="w-4 h-4 text-suas-ruby"
+                            />
+                            <label htmlFor="res_ip" className="text-[10px] text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider cursor-pointer">Reserved IP Address</label>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-slate-100 dark:border-zinc-850 pt-3 mt-3">
+                          <h5 className="text-[9px] uppercase tracking-widest text-slate-450 block mb-2 font-black">Computer Hardware Specifications</h5>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Processor (CPU)</label>
+                              <input
+                                type="text"
+                                value={invForm.processor || ""}
+                                onChange={(e) => setInvForm({ ...invForm, processor: e.target.value })}
+                                placeholder="e.g. Core i7 12Gen"
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">RAM Count</label>
+                              <input
+                                type="text"
+                                value={invForm.ram || ""}
+                                onChange={(e) => setInvForm({ ...invForm, ram: e.target.value })}
+                                placeholder="e.g. 16 GB DDR4"
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Storage Size</label>
+                              <input
+                                type="text"
+                                value={invForm.storage || ""}
+                                onChange={(e) => setInvForm({ ...invForm, storage: e.target.value })}
+                                placeholder="e.g. 512 GB"
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 mt-2">
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Disk Type</label>
+                              <select
+                                value={invForm.storage_type}
+                                onChange={(e) => setInvForm({ ...invForm, storage_type: e.target.value })}
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 rounded-xl outline-none text-slate-800 dark:text-white"
+                              >
+                                <option value="SSD">Solid State Drive (SSD)</option>
+                                <option value="HDD">Hard Disk Drive (HDD)</option>
+                                <option value="NVMe">NVMe SSD</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Graphics GPU</label>
+                              <input
+                                type="text"
+                                value={invForm.gpu || ""}
+                                onChange={(e) => setInvForm({ ...invForm, gpu: e.target.value })}
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Motherboard Make</label>
+                              <input
+                                type="text"
+                                value={invForm.motherboard || ""}
+                                onChange={(e) => setInvForm({ ...invForm, motherboard: e.target.value })}
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 mt-2">
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Operating System</label>
+                              <input
+                                type="text"
+                                value={invForm.operating_system}
+                                onChange={(e) => setInvForm({ ...invForm, operating_system: e.target.value })}
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Office Suite version</label>
+                              <input
+                                type="text"
+                                value={invForm.office_version || ""}
+                                onChange={(e) => setInvForm({ ...invForm, office_version: e.target.value })}
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">BIOS Version</label>
+                              <input
+                                type="text"
+                                value={invForm.bios_version || ""}
+                                onChange={(e) => setInvForm({ ...invForm, bios_version: e.target.value })}
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TAB 3: PERIPHERALS LINKER */}
+                    {activeModalTab === "peripherals" && (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase tracking-wider block text-slate-400">Chained Parent CPU Asset</label>
+                          <select
+                            value={invForm.parent_cpu_id || ""}
+                            onChange={(e) => setInvForm({ ...invForm, parent_cpu_id: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 rounded-xl outline-none text-slate-800 dark:text-white"
+                          >
+                            <option value="">None (Independent Asset / CPU itself)</option>
+                            {inventoryItems.filter((i: any) => (i.device_type === "CPU" || i.device_type === "Desktop") && (i.uuid || i.id) !== invForm.id).map((cpu: any) => (
+                              <option key={cpu.uuid || cpu.id} value={cpu.uuid || cpu.id}>🏢 {cpu.lab_name} - CPU: {cpu.lab_asset_id || cpu.asset_number} ({cpu.brand} {cpu.model_number})</option>
+                            ))}
+                          </select>
+                          <p className="text-[8px] text-slate-400 mt-1 uppercase font-semibold">If this asset is a Monitor, Keyboard, Mouse, UPS or Printer, you can chain it to a host CPU Workstation.</p>
+                        </div>
+
+                        {/* Monitor configurations specs if this is a monitor */}
+                        {invForm.device_type === "Monitor" && (
+                          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-zinc-850">
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Screen Size (inches)</label>
+                              <input
+                                type="text"
+                                value={invForm.screen_size || ""}
+                                onChange={(e) => setInvForm({ ...invForm, screen_size: e.target.value })}
+                                placeholder="e.g. 21.5 inch"
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] uppercase tracking-wider block text-slate-400">Display Resolution</label>
+                              <input
+                                type="text"
+                                value={invForm.resolution || ""}
+                                onChange={(e) => setInvForm({ ...invForm, resolution: e.target.value })}
+                                placeholder="e.g. 1920 x 1080"
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-955 rounded-xl outline-none"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Display linked items if editing a CPU */}
+                        {(invForm.device_type === "CPU" || invForm.device_type === "Desktop") && invForm.id && (
+                          <div className="pt-3 border-t border-slate-100 dark:border-zinc-850">
+                            <h5 className="text-[9px] uppercase tracking-widest text-slate-450 block mb-2 font-black">Linked Peripheral Assets</h5>
+                            <div className="space-y-2">
+                              {inventoryItems.filter((i: any) => i.parent_cpu_id === invForm.id).length === 0 ? (
+                                <div className="text-[10px] text-slate-400 italic">No peripherals (Monitors, Keyboard, Webcams) currently linked to this CPU.</div>
+                              ) : (
+                                inventoryItems.filter((i: any) => i.parent_cpu_id === invForm.id).map((child: any) => (
+                                  <div key={child.uuid || child.id} className="flex justify-between items-center p-2 rounded-lg bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800">
+                                    <span className="text-[10px] text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider">{child.device_type}: {child.lab_asset_id || child.asset_number} ({child.brand} {child.model_number || ""})</span>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        // Unlink child peripheral
+                                        const nextChild = { ...child, parent_cpu_id: null, id: child.uuid || child.id };
+                                        onSaveInventory({ preventDefault: () => {} } as any, nextChild);
+                                        showToast(`Unlinked ${child.device_type} successfully.`);
+                                      }}
+                                      className="px-2 py-0.5 text-[8px] bg-rose-50 text-suas-ruby font-black uppercase rounded hover:bg-rose-100 cursor-pointer"
+                                    >
+                                      Unlink
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* TAB 4: OCR & PHOTOS */}
+                    {activeModalTab === "photos" && (
+                      <div className="space-y-3">
+                        <div className="p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-zinc-800 text-center">
+                          <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">OCR Serial Plate Auto-Fill</h5>
+                          <p className="text-[9px] text-slate-400 mb-3 font-semibold">Upload an image of the device sticker (Dell/HP/Lenovo) to auto-extract parameters.</p>
+                          <div className="relative w-36 mx-auto">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleOcrUpload}
+                              className="absolute inset-0 opacity-0 cursor-pointer"
+                              disabled={ocrLoading}
+                            />
+                            <button
+                              type="button"
+                              disabled={ocrLoading}
+                              className="w-full py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-extrabold text-[9px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Upload size={12} /> {ocrLoading ? "Analyzing Sticker..." : "Select Sticker Image"}
+                            </button>
+                          </div>
+
+                          {ocrResult && (
+                            <div className="mt-3 text-[9px] font-bold text-suas-ruby bg-rose-50 dark:bg-rose-950/20 p-2.5 rounded-lg text-left">
+                              {ocrResult}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Image Attachment Upload */}
+                        <div className="space-y-1.5 pt-3 border-t border-slate-100 dark:border-zinc-850">
+                          <label className="text-[9px] uppercase tracking-wider block text-slate-400">Attached Device Images (Sticker, Installed layout)</label>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files || []);
+                              files.forEach(file => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  setInvForm((prev: any) => ({
+                                    ...prev,
+                                    attachments: [
+                                      ...(prev.attachments || []),
+                                      { image_type: "Layout", image_url: reader.result as string }
+                                    ]
+                                  }));
+                                };
+                                reader.readAsDataURL(file);
+                              });
+                            }}
+                            className="w-full px-3 py-1.5 border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 rounded-xl outline-none"
+                          />
+                          
+                          {/* Image preview list */}
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {invForm.attachments && invForm.attachments.map((att: any, idx: number) => (
+                              <div key={idx} className="relative w-16 h-16 border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+                                <img src={att.image_url} alt="att preview" className="w-full h-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setInvForm((prev: any) => ({
+                                      ...prev,
+                                      attachments: prev.attachments.filter((_: any, i: number) => i !== idx)
+                                    }));
+                                  }}
+                                  className="absolute top-0.5 right-0.5 p-0.5 bg-black/70 text-white rounded hover:bg-rose-600 cursor-pointer"
+                                >
+                                  <X size={10} />
+                                </button>
+                                <span className="absolute bottom-0 inset-x-0 bg-slate-900/70 text-white text-[7px] text-center uppercase tracking-wider font-extrabold">{att.image_type || "Layout"}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bottom Action Submit */}
+                    <div className="pt-4 border-t border-slate-100 dark:border-zinc-850 mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowInventoryModal(false)}
+                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-slate-700 dark:text-slate-300 font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-extrabold text-xs uppercase tracking-wider rounded-xl hover:bg-suas-ruby dark:hover:bg-suas-ruby-neon hover:text-white transition shadow-md cursor-pointer"
+                      >
+                        Confirm &amp; Deploy
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 7. Asset Lifecycle Panel (Module 6) [Lockable] */}
       {activeTab === "asset_management" && modulesStatus.asset_management && (

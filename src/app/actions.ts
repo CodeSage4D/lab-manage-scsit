@@ -1,7 +1,14 @@
 "use server";
 
-import { neon } from "@neondatabase/serverless";
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
+import { neon, Pool } from "@neondatabase/serverless";
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync, createHash } from "crypto";
+import { headers } from "next/headers";
+
+// Hash helper for passwords and PINs
+export function hashValue(val: string): string {
+  if (!val) return "";
+  return createHash("sha256").update(val).digest("hex");
+}
 
 // Derived stable key (32 bytes) for AES-256
 const ENCRYPTION_KEY = scryptSync(
@@ -128,22 +135,23 @@ export async function initDatabase() {
     `;
     console.log("Migration: Ensured GIN index on 'subjects' JSONB column exists.");
 
-    // Seed default administrators if the table is empty or new Super Admin N5428 is missing (exactly 5 default heads)
+    // Seed default administrators if the table is empty or new Super Admin / mrityunjay.sir is missing
     const adminCountResult = await sql`SELECT COUNT(*)::int as total FROM suas_admins`;
-    const hasNewSuperAdmin = await sql`SELECT COUNT(*)::int as total FROM suas_admins WHERE id = 'N5428'`;
+    const hasMrityunjay = await sql`SELECT COUNT(*)::int as total FROM suas_admins WHERE id = 'mrityunjay.sir'`;
     
-    if (adminCountResult[0]?.total === 0 || hasNewSuperAdmin[0]?.total === 0) {
+    if (adminCountResult[0]?.total === 0 || hasMrityunjay[0]?.total === 0) {
       // Clear out legacy default users to avoid stale profiles
       await sql`DELETE FROM suas_admins WHERE id IN ('admin', 'it.staff1', 'it.staff2', 'it.staff3', 'trainer1', 'assistant1')`;
       
       await sql`
         INSERT INTO suas_admins (id, name, email, mobile, assigned_labs, role, password, profile_photo)
         VALUES 
-        ('N5428', 'Karan Mishra', 'Karan.mishra@suas.ac.in', '9999999901', 'Lab A,Lab B,Lab C,Lab D,Lab E,Lab F,Lab G,Lab H,Lab I', 'Director Admin', '@dn1m@26', NULL),
-        ('monark.raikwar', 'Monark Raikwar', 'monark.raikwar@suas.ac.in', '9999999902', 'Lab A,Lab B', 'Lab Assistant', '@dn1m@26', NULL),
-        ('nitin.panchal', 'Nitin Panchal', 'nitin.panchal@suas.ac.in', '9999999903', 'Lab C,Lab D', 'Lab Assistant', '@dn1m@26', NULL),
-        ('prashant.patil', 'Prashant Patil', 'prashant.patil@suas.ac.in', '9999999904', 'Lab E,Lab F', 'Lab Assistant', '@dn1m@26', NULL),
-        ('salman.khan', 'Salman Khan', 'salman.khan@suas.ac.in', '9999999905', 'Lab G,Lab H,Lab I', 'Trainer of Practice', '@dn1m@26', NULL)
+        ('N5428', 'Karan Mishra', 'Karan.mishra@suas.ac.in', '9999999901', 'Computer Center,Basic Programming - I,Basic Programming - II,Advanced Cloud Computing,Web Technologies,Mobile Computing,Mathamatics Simulation and Sumulation,Computer Lab,IOT Lab', 'Director Admin', '@dn1m@26', NULL),
+        ('monark.raikwar', 'Monark Raikwar', 'monark.raikwar@suas.ac.in', '9999999902', 'Computer Center,Basic Programming - I,Basic Programming - II,Advanced Cloud Computing,Web Technologies,Mobile Computing,Mathamatics Simulation and Sumulation,Computer Lab,IOT Lab', 'Lab Assistant', '@dn1m@26', NULL),
+        ('nitin.panchal', 'Nitin Panchal', 'nitin.panchal@suas.ac.in', '9999999903', 'Advanced Cloud Computing,Web Technologies', 'Lab Assistant', '@dn1m@26', NULL),
+        ('prashant.patil', 'Prashant Patil', 'prashant.patil@suas.ac.in', '9999999904', 'Basic Programming - I,Basic Programming - II', 'Lab Assistant', '@dn1m@26', NULL),
+        ('salman.khan', 'Salman Khan', 'salman.khan@suas.ac.in', '9999999905', 'Computer Lab,IOT Lab', 'Trainer of Practice', '@dn1m@26', NULL),
+        ('mrityunjay.sir', 'Mrityunjay Sir', 'mrityunjay@suas.ac.in', '9999999906', 'Computer Center', 'Lab Admin', '@dn1m@26', NULL)
         ON CONFLICT (id) DO UPDATE SET 
           name = EXCLUDED.name,
           email = EXCLUDED.email,
@@ -213,27 +221,8 @@ export async function initDatabase() {
       );
     `;
 
-    // Seed default laboratories if empty
-    const labsCountRes = await sql`SELECT COUNT(*)::int as total FROM suas_laboratories`;
-    if (labsCountRes[0]?.total === 0) {
-      const defaultLabs = [
-        { name: "Lab A", code: "LA", building: "Main Building", floor: "Ground Floor", location: "Room G-01", seating_capacity: 40, total_computers: 40, operating_system: "Windows 11 / Ubuntu", primary_purpose: "Programming & Data Structures", lab_in_charge: "Monark Raikwar", lab_assistant: "Monark Raikwar" },
-        { name: "Lab B", code: "LB", building: "Main Building", floor: "Ground Floor", location: "Room G-02", seating_capacity: 40, total_computers: 40, operating_system: "Windows 11", primary_purpose: "Web Development", lab_in_charge: "Monark Raikwar", lab_assistant: "Monark Raikwar" },
-        { name: "Lab C", code: "LC", building: "Main Building", floor: "First Floor", location: "Room 101", seating_capacity: 35, total_computers: 35, operating_system: "Windows 11 / Ubuntu", primary_purpose: "Database Management Systems", lab_in_charge: "Nitin Panchal", lab_assistant: "Nitin Panchal" },
-        { name: "Lab D", code: "LD", building: "Main Building", floor: "First Floor", location: "Room 102", seating_capacity: 35, total_computers: 35, operating_system: "Windows 11", primary_purpose: "Java & Object Oriented Programming", lab_in_charge: "Nitin Panchal", lab_assistant: "Nitin Panchal" },
-        { name: "Lab E", code: "LE", building: "Annex Building", floor: "Second Floor", location: "Room 201", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11 / Ubuntu", primary_purpose: "AI / Machine Learning", lab_in_charge: "Prashant Patil", lab_assistant: "Prashant Patil" },
-        { name: "Lab F", code: "LF", building: "Annex Building", floor: "Second Floor", location: "Room 202", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11", primary_purpose: "Computer Networks & Security", lab_in_charge: "Prashant Patil", lab_assistant: "Prashant Patil" },
-        { name: "Lab G", code: "LG", building: "Annex Building", floor: "Third Floor", location: "Room 301", seating_capacity: 45, total_computers: 45, operating_system: "Windows 11", primary_purpose: "Cloud Computing & DevOps", lab_in_charge: "Salman Khan", lab_assistant: "Salman Khan" },
-        { name: "Lab H", code: "LH", building: "Annex Building", floor: "Third Floor", location: "Room 302", seating_capacity: 45, total_computers: 45, operating_system: "Windows 11 / Ubuntu", primary_purpose: "Mobile Application Development", lab_in_charge: "Salman Khan", lab_assistant: "Salman Khan" },
-        { name: "Lab I", code: "LI", building: "Annex Building", floor: "Third Floor", location: "Room 303", seating_capacity: 50, total_computers: 50, operating_system: "Windows 11 / macOS", primary_purpose: "Internet of Things & Embedded Systems", lab_in_charge: "Salman Khan", lab_assistant: "Salman Khan" }
-      ];
-      for (const lab of defaultLabs) {
-        await sql`
-          INSERT INTO suas_laboratories (name, code, building, floor, location, seating_capacity, total_computers, operating_system, primary_purpose, lab_in_charge, lab_assistant, status)
-          VALUES (${lab.name}, ${lab.code}, ${lab.building}, ${lab.floor}, ${lab.location}, ${lab.seating_capacity}, ${lab.total_computers}, ${lab.operating_system}, ${lab.primary_purpose}, ${lab.lab_in_charge}, ${lab.lab_assistant}, 'Active')
-        `;
-      }
-    }
+    // Laboratory seeding relocated to run after column migrations.
+    console.log("Migration: Relocating laboratory seeds.");
 
     await sql`
       CREATE TABLE IF NOT EXISTS suas_lab_softwares (
@@ -401,6 +390,206 @@ export async function initDatabase() {
       const modCount = await sql`SELECT COUNT(*)::int as total FROM suas_settings WHERE key = ${modKey}`;
       if (modCount[0]?.total === 0) {
         await sql`INSERT INTO suas_settings (key, value) VALUES (${modKey}, ${isEnabledByDefault ? 'true' : 'false'})`;
+      }
+    }
+
+    // Alter Admin Table columns
+    await sql`ALTER TABLE suas_admins ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255)`;
+    await sql`ALTER TABLE suas_admins ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Active'`;
+    await sql`ALTER TABLE suas_admins ADD COLUMN IF NOT EXISTS failed_login_attempts INT DEFAULT 0`;
+    await sql`ALTER TABLE suas_admins ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE`;
+
+    // Alter Lab Table columns
+    await sql`ALTER TABLE suas_laboratories ADD COLUMN IF NOT EXISTS series_prefix VARCHAR(50)`;
+    await sql`ALTER TABLE suas_laboratories ADD COLUMN IF NOT EXISTS starting_number VARCHAR(50) DEFAULT '001'`;
+    await sql`ALTER TABLE suas_laboratories ADD COLUMN IF NOT EXISTS current_number INT DEFAULT 0`;
+    await sql`ALTER TABLE suas_laboratories ADD COLUMN IF NOT EXISTS max_capacity INT DEFAULT 60`;
+
+    // Seed and/or update default laboratories exactly matching the strict requirements
+    const defaultLabs = [
+      { name: "Lab A", code: "LBA", series_prefix: "LBA", building: "EB", floor: "1", location: "Computer Center", seating_capacity: 60, total_computers: 60, operating_system: "Windows 11 / Ubuntu", primary_purpose: "Computer Center", lab_in_charge: "Mrityunjay Sir", lab_assistant: "Monark Sir", max_capacity: 60 },
+      { name: "Lab B", code: "LBB", series_prefix: "LBB", building: "EA", floor: "1", location: "Basic Programming - I", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11", primary_purpose: "Basic Programming - I", lab_in_charge: "Prashant Sir", lab_assistant: "Monark Sir", max_capacity: 30 },
+      { name: "Lab C", code: "LBC", series_prefix: "LBC", building: "EB", floor: "1", location: "Basic Programming - II", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11 / Ubuntu", primary_purpose: "Basic Programming - II", lab_in_charge: "Prashant Sir", lab_assistant: "Monark Sir", max_capacity: 30 },
+      { name: "Lab D", code: "LBD", series_prefix: "LBD", building: "EA", floor: "5", location: "Room 505", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11", primary_purpose: "Advanced Cloud Computing", lab_in_charge: "Nitin Sir", lab_assistant: "Monark Sir", max_capacity: 30 },
+      { name: "Lab E", code: "LBE", series_prefix: "LBE", building: "EA", floor: "5", location: "Room 504", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11 / Ubuntu", primary_purpose: "Web Technologies", lab_in_charge: "Nitin Sir", lab_assistant: "Monark Sir", max_capacity: 30 },
+      { name: "Lab F", code: "LBF", series_prefix: "LBF", building: "EA", floor: "5", location: "Room 503", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11", primary_purpose: "Mobile Computing", lab_in_charge: "Karan Sir", lab_assistant: "Monark Sir", max_capacity: 30 },
+      { name: "Lab G", code: "LBG", series_prefix: "LBG", building: "EB", floor: "5", location: "Room 501", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11", primary_purpose: "Mathamatics Simulation and Sumulation", lab_in_charge: "Karan Sir", lab_assistant: "Monark Sir", max_capacity: 30 },
+      { name: "Lab H", code: "LBH", series_prefix: "LBH", building: "EB", floor: "5", location: "Room 502", seating_capacity: 30, total_computers: 30, operating_system: "Windows 11 / Ubuntu", primary_purpose: "Computer Lab", lab_in_charge: "Salman Sir", lab_assistant: "Monark Sir", max_capacity: 30 },
+      { name: "Lab I", code: "LBI", series_prefix: "LBI", building: "EB", floor: "5", location: "Room 503", seating_capacity: 20, total_computers: 20, operating_system: "Windows 11 / Ubuntu", primary_purpose: "IOT Lab", lab_in_charge: "Salman Sir", lab_assistant: "Monark Sir", max_capacity: 20 }
+    ];
+
+    for (const lab of defaultLabs) {
+      const existing = await sql`SELECT id FROM suas_laboratories WHERE name = ${lab.name}`;
+      if (existing.length > 0) {
+        await sql`
+          UPDATE suas_laboratories SET 
+            code = ${lab.code},
+            series_prefix = ${lab.series_prefix},
+            building = ${lab.building},
+            floor = ${lab.floor},
+            location = ${lab.location},
+            seating_capacity = ${lab.seating_capacity},
+            total_computers = ${lab.total_computers},
+            primary_purpose = ${lab.primary_purpose},
+            lab_in_charge = ${lab.lab_in_charge},
+            lab_assistant = ${lab.lab_assistant},
+            max_capacity = ${lab.max_capacity}
+          WHERE id = ${existing[0].id}
+        `;
+      } else {
+        await sql`
+          INSERT INTO suas_laboratories (
+            name, code, series_prefix, building, floor, location, 
+            seating_capacity, total_computers, operating_system, 
+            primary_purpose, lab_in_charge, lab_assistant, status, max_capacity
+          ) VALUES (
+            ${lab.name}, ${lab.code}, ${lab.series_prefix}, ${lab.building}, ${lab.floor}, ${lab.location}, 
+            ${lab.seating_capacity}, ${lab.total_computers}, ${lab.operating_system}, 
+            ${lab.primary_purpose}, ${lab.lab_in_charge}, ${lab.lab_assistant}, 'Active', ${lab.max_capacity}
+          )
+        `;
+      }
+    }
+
+    // Create New Tables
+    await sql`
+      CREATE TABLE IF NOT EXISTS suas_assets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        global_asset_id VARCHAR(50) UNIQUE NOT NULL,
+        lab_asset_id VARCHAR(50) UNIQUE NOT NULL,
+        lab_id INT REFERENCES suas_laboratories(id) ON DELETE CASCADE,
+        asset_type VARCHAR(100) NOT NULL,
+        brand VARCHAR(100),
+        manufacturer VARCHAR(100),
+        model_number VARCHAR(100),
+        serial_number VARCHAR(100),
+        service_tag VARCHAR(100),
+        express_service_code VARCHAR(100),
+        mtm VARCHAR(100),
+        product_number VARCHAR(100),
+        manufacture_date DATE,
+        purchase_date DATE,
+        invoice_number VARCHAR(100),
+        warranty_start DATE,
+        warranty_end DATE,
+        vendor VARCHAR(100),
+        status VARCHAR(50) NOT NULL,
+        parent_cpu_id UUID REFERENCES suas_assets(id) ON DELETE SET NULL,
+        computer_name VARCHAR(100),
+        hostname VARCHAR(100),
+        ipv4 VARCHAR(45),
+        ipv6 VARCHAR(45),
+        mac_address VARCHAR(50),
+        wifi_mac VARCHAR(50),
+        lan_mac VARCHAR(50),
+        gateway VARCHAR(50),
+        dns VARCHAR(100),
+        ip_type VARCHAR(20) DEFAULT 'DHCP',
+        domain VARCHAR(100),
+        workgroup VARCHAR(100),
+        last_seen_date TIMESTAMP,
+        network_status VARCHAR(50),
+        reserved_ip BOOLEAN DEFAULT FALSE,
+        processor VARCHAR(100),
+        ram VARCHAR(50),
+        storage VARCHAR(50),
+        storage_type VARCHAR(50),
+        gpu VARCHAR(100),
+        motherboard VARCHAR(100),
+        bios_version VARCHAR(100),
+        operating_system VARCHAR(100),
+        office_version VARCHAR(100),
+        screen_size VARCHAR(50),
+        resolution VARCHAR(50),
+        barcode_data VARCHAR(255),
+        qr_json TEXT,
+        qr_image TEXT,
+        version INT DEFAULT 1,
+        is_deleted BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS suas_asset_lifecycle_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        asset_id UUID REFERENCES suas_assets(id) ON DELETE CASCADE,
+        event_type VARCHAR(100) NOT NULL,
+        details TEXT,
+        created_by VARCHAR(100),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS suas_asset_transfers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        asset_id UUID REFERENCES suas_assets(id) ON DELETE CASCADE,
+        from_lab_id INT,
+        to_lab_id INT,
+        old_lab_asset_id VARCHAR(50),
+        new_lab_asset_id VARCHAR(50),
+        transferred_by VARCHAR(100),
+        transferred_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS suas_asset_attachments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        asset_id UUID REFERENCES suas_assets(id) ON DELETE CASCADE,
+        image_type VARCHAR(50),
+        image_url TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS suas_admin_login_history (
+        id SERIAL PRIMARY KEY,
+        admin_id VARCHAR(50),
+        event_type VARCHAR(50),
+        ip_address VARCHAR(100),
+        browser VARCHAR(255),
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS suas_import_history (
+        id SERIAL PRIMARY KEY,
+        file_name VARCHAR(255) NOT NULL,
+        imported_by VARCHAR(100) NOT NULL,
+        total_rows INT NOT NULL,
+        imported INT NOT NULL,
+        updated INT NOT NULL,
+        skipped INT NOT NULL,
+        failed INT NOT NULL,
+        error_report TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    // Alter asset table for import session ID
+    await sql`ALTER TABLE suas_assets ADD COLUMN IF NOT EXISTS import_session_id VARCHAR(100)`;
+
+    // Indexes for high performance lookup (10,000+ assets support)
+    await sql`CREATE INDEX IF NOT EXISTS idx_suas_assets_global_id ON suas_assets (global_asset_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_suas_assets_lab_asset_id ON suas_assets (lab_asset_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_suas_assets_serial ON suas_assets (serial_number)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_suas_assets_mac ON suas_assets (mac_address)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_suas_assets_ipv4 ON suas_assets (ipv4)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_suas_assets_lab_id ON suas_assets (lab_id)`;
+
+    // Seed defaults for lab series prefixes and capacity if empty
+    await sql`UPDATE suas_laboratories SET series_prefix = code, max_capacity = 60 WHERE series_prefix IS NULL`;
+
+    // Migrate plain passwords in admin database to SHA-256 hashes
+    const admins = await sql`SELECT id, password FROM suas_admins`;
+    for (const admin of admins) {
+      if (admin.password && admin.password.length !== 64) {
+        const hashed = hashValue(admin.password);
+        await sql`UPDATE suas_admins SET password = ${hashed} WHERE id = ${admin.id}`;
       }
     }
 
@@ -830,27 +1019,304 @@ export async function deleteAdmin(id: string) {
 }
 
 /**
- * Verifies admin credentials.
+ * Verifies admin credentials (Password Login).
  */
 export async function verifyAdminLogin(id: string, password: string) {
   try {
     const sql = getSql();
     await initDatabase();
-    const result = await sql`
-      SELECT id, name, email, mobile, assigned_labs, role, profile_photo
+    
+    const reqHeaders = await headers();
+    const userAgent = reqHeaders.get("user-agent") || "Unknown Browser";
+    const ip = reqHeaders.get("x-forwarded-for")?.split(',')[0].trim() || "127.0.0.1";
+
+    const cleanId = id.trim();
+    
+    // Find admin account
+    const admins = await sql`
+      SELECT id, name, email, mobile, assigned_labs, role, password, profile_photo, pin_hash, status, failed_login_attempts, locked_until
       FROM suas_admins
-      WHERE (LOWER(id) = LOWER(${id.trim()}) OR LOWER(email) = LOWER(${id.trim()})) AND password = ${password}
+      WHERE LOWER(id) = LOWER(${cleanId}) OR LOWER(email) = LOWER(${cleanId})
     `;
-    if (result.length > 0) {
-      return { success: true, data: result[0] };
-    } else {
+
+    if (admins.length === 0) {
       return { success: false, error: "Invalid Admin ID or Password." };
+    }
+
+    const admin = admins[0];
+
+    // Check status
+    if (admin.status === "Inactive") {
+      return { success: false, error: "This admin account is inactive. Please contact the administrator." };
+    }
+
+    // Check lock out
+    if (admin.locked_until) {
+      const lockTime = new Date(admin.locked_until).getTime();
+      const now = Date.now();
+      if (lockTime > now) {
+        const remainingSec = Math.ceil((lockTime - now) / 1000);
+        return { 
+          success: false, 
+          error: `Account is temporarily locked. Try again in ${remainingSec} seconds.` 
+        };
+      }
+    }
+
+    const hashedInput = hashValue(password);
+    if (hashedInput === admin.password) {
+      // Success! Reset failed attempts
+      await sql`
+        UPDATE suas_admins 
+        SET failed_login_attempts = 0, locked_until = NULL 
+        WHERE id = ${admin.id}
+      `;
+
+      // Log to login history and audit log
+      await sql`
+        INSERT INTO suas_admin_login_history (admin_id, event_type, ip_address, browser)
+        VALUES (${admin.id}, 'LOGIN_PASSWORD', ${ip}, ${userAgent})
+      `;
+
+      await logAuditAction(admin.name, "LOGIN_PASSWORD", "suas_admins", admin.id, "", "Hashed Password login success");
+
+      // Strip password and pin_hash from returned data, but return if PIN is set
+      const isPinSet = admin.pin_hash ? true : false;
+      return {
+        success: true,
+        data: {
+          id: admin.id,
+          name: admin.name,
+          email: admin.email,
+          mobile: admin.mobile,
+          assigned_labs: admin.assigned_labs,
+          role: admin.role,
+          profile_photo: admin.profile_photo,
+          isPinSet
+        }
+      };
+    } else {
+      // Failed attempt
+      const attempts = (admin.failed_login_attempts || 0) + 1;
+      let lockUpdate = null;
+      if (attempts >= 5) {
+        lockUpdate = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes lockout
+      }
+
+      await sql`
+        UPDATE suas_admins
+        SET failed_login_attempts = ${attempts},
+            locked_until = ${lockUpdate}
+        WHERE id = ${admin.id}
+      `;
+
+      // Log failure
+      await sql`
+        INSERT INTO suas_admin_login_history (admin_id, event_type, ip_address, browser)
+        VALUES (${admin.id}, 'FAILED_PASSWORD', ${ip}, ${userAgent})
+      `;
+
+      if (attempts >= 5) {
+        await logAuditAction(admin.name, "LOCKOUT", "suas_admins", admin.id, "", "Account locked out for 5 minutes");
+        return { success: false, error: "Account locked due to 5 failed attempts. Please try again after 5 minutes." };
+      }
+
+      return { success: false, error: `Invalid Admin ID or Password. ${5 - attempts} attempts remaining.` };
     }
   } catch (error: any) {
     console.error("Failed to verify admin login:", error);
     return { success: false, error: error.message || "Failed to login" };
   }
 }
+
+/**
+ * Verifies admin credentials (PIN Login).
+ */
+export async function verifyAdminPINLogin(id: string, pin: string) {
+  try {
+    const sql = getSql();
+    await initDatabase();
+
+    const reqHeaders = await headers();
+    const userAgent = reqHeaders.get("user-agent") || "Unknown Browser";
+    const ip = reqHeaders.get("x-forwarded-for")?.split(',')[0].trim() || "127.0.0.1";
+
+    const cleanId = id.trim();
+
+    // Find admin account
+    const admins = await sql`
+      SELECT id, name, email, mobile, assigned_labs, role, profile_photo, pin_hash, status, failed_login_attempts, locked_until
+      FROM suas_admins
+      WHERE LOWER(id) = LOWER(${cleanId}) OR LOWER(email) = LOWER(${cleanId})
+    `;
+
+    if (admins.length === 0) {
+      return { success: false, error: "Invalid Admin ID or PIN." };
+    }
+
+    const admin = admins[0];
+
+    // Check status
+    if (admin.status === "Inactive") {
+      return { success: false, error: "This admin account is inactive. Please contact the administrator." };
+    }
+
+    // Check lock out
+    if (admin.locked_until) {
+      const lockTime = new Date(admin.locked_until).getTime();
+      const now = Date.now();
+      if (lockTime > now) {
+        const remainingSec = Math.ceil((lockTime - now) / 1000);
+        return { 
+          success: false, 
+          error: `Account is temporarily locked. Try again in ${remainingSec} seconds.` 
+        };
+      }
+    }
+
+    // Check if PIN is configured
+    if (!admin.pin_hash) {
+      return { success: false, error: "PIN Quick Login is not set up yet. Please sign in with password first." };
+    }
+
+    const hashedInput = hashValue(pin);
+    if (hashedInput === admin.pin_hash) {
+      // Success! Reset failed attempts
+      await sql`
+        UPDATE suas_admins 
+        SET failed_login_attempts = 0, locked_until = NULL 
+        WHERE id = ${admin.id}
+      `;
+
+      // Log login history and audit log
+      await sql`
+        INSERT INTO suas_admin_login_history (admin_id, event_type, ip_address, browser)
+        VALUES (${admin.id}, 'LOGIN_PIN', ${ip}, ${userAgent})
+      `;
+
+      await logAuditAction(admin.name, "LOGIN_PIN", "suas_admins", admin.id, "", "Quick PIN login success");
+
+      return {
+        success: true,
+        data: {
+          id: admin.id,
+          name: admin.name,
+          email: admin.email,
+          mobile: admin.mobile,
+          assigned_labs: admin.assigned_labs,
+          role: admin.role,
+          profile_photo: admin.profile_photo,
+          isPinSet: true
+        }
+      };
+    } else {
+      // Failed attempt
+      const attempts = (admin.failed_login_attempts || 0) + 1;
+      let lockUpdate = null;
+      if (attempts >= 5) {
+        lockUpdate = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes lockout
+      }
+
+      await sql`
+        UPDATE suas_admins
+        SET failed_login_attempts = ${attempts},
+            locked_until = ${lockUpdate}
+        WHERE id = ${admin.id}
+      `;
+
+      // Log failure
+      await sql`
+        INSERT INTO suas_admin_login_history (admin_id, event_type, ip_address, browser)
+        VALUES (${admin.id}, 'FAILED_PIN', ${ip}, ${userAgent})
+      `;
+
+      if (attempts >= 5) {
+        await logAuditAction(admin.name, "LOCKOUT", "suas_admins", admin.id, "", "Account locked out for 5 minutes (PIN)");
+        return { success: false, error: "Account locked due to 5 failed attempts. Please try again after 5 minutes." };
+      }
+
+      return { success: false, error: `Invalid PIN. ${5 - attempts} attempts remaining.` };
+    }
+  } catch (error: any) {
+    console.error("Failed to verify PIN login:", error);
+    return { success: false, error: error.message || "Failed to login" };
+  }
+}
+
+/**
+ * Sets up the quick login PIN after successful password authentication.
+ */
+export async function setupAdminPIN(id: string, passwordConfirm: string, pin: string) {
+  try {
+    const sql = getSql();
+    await initDatabase();
+
+    const cleanId = id.trim();
+    const admins = await sql`
+      SELECT id, name, password
+      FROM suas_admins
+      WHERE id = ${cleanId}
+    `;
+
+    if (admins.length === 0) {
+      return { success: false, error: "Admin account not found." };
+    }
+
+    const admin = admins[0];
+    const hashedPass = hashValue(passwordConfirm);
+
+    if (hashedPass !== admin.password) {
+      return { success: false, error: "Password verification failed. Unable to setup PIN." };
+    }
+
+    if (pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
+      return { success: false, error: "PIN must be between 4 and 8 digits numeric." };
+    }
+
+    const hashedPin = hashValue(pin);
+    await sql`
+      UPDATE suas_admins
+      SET pin_hash = ${hashedPin}
+      WHERE id = ${admin.id}
+    `;
+
+    await logAuditAction(admin.name, "PIN_SETUP", "suas_admins", admin.id, "", "Quick PIN login configured successfully");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to setup admin PIN:", error);
+    return { success: false, error: error.message || "Failed to setup PIN" };
+  }
+}
+
+/**
+ * Resets the quick login PIN (requires password verification).
+ */
+export async function resetAdminPIN(id: string, passwordConfirm: string, newPin: string) {
+  return setupAdminPIN(id, passwordConfirm, newPin); // Reuses PIN setup validation
+}
+
+/**
+ * Logs an admin logout event.
+ */
+export async function logAdminLogout(id: string, name: string) {
+  try {
+    const sql = getSql();
+    const reqHeaders = await headers();
+    const userAgent = reqHeaders.get("user-agent") || "Unknown Browser";
+    const ip = reqHeaders.get("x-forwarded-for")?.split(',')[0].trim() || "127.0.0.1";
+
+    await sql`
+      INSERT INTO suas_admin_login_history (admin_id, event_type, ip_address, browser)
+      VALUES (${id}, 'LOGOUT', ${ip}, ${userAgent})
+    `;
+    await logAuditAction(name, "LOGOUT", "suas_admins", id, "", "Session closed successfully");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to log admin logout:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 
 /**
  * Faculty lookup to query the status of their software requirement requests.
@@ -1041,6 +1507,19 @@ export async function saveLaboratory(lab: any, username: string) {
     const sql = getSql();
     await initDatabase();
 
+    // Verify duplicate lab code
+    const dups = lab.id
+      ? await sql`SELECT id FROM suas_laboratories WHERE LOWER(code) = LOWER(${lab.code.trim()}) AND id != ${lab.id}`
+      : await sql`SELECT id FROM suas_laboratories WHERE LOWER(code) = LOWER(${lab.code.trim()})`;
+
+    if (dups.length > 0) {
+      return { success: false, error: `Duplicate Lab Code: ${lab.code} already exists.` };
+    }
+
+    const seriesPrefix = (lab.series_prefix || lab.code || "").trim().toUpperCase();
+    const maxCapacity = parseInt(lab.max_capacity) || parseInt(lab.total_computers) || 60;
+    const startingNumber = lab.starting_number || "001";
+
     let isEdit = false;
     let prevVal = "";
 
@@ -1062,15 +1541,26 @@ export async function saveLaboratory(lab: any, username: string) {
             primary_purpose = ${lab.primary_purpose},
             lab_in_charge = ${lab.lab_in_charge},
             lab_assistant = ${lab.lab_assistant},
-            status = ${lab.status || "Active"}
+            status = ${lab.status || "Active"},
+            series_prefix = ${seriesPrefix},
+            starting_number = ${startingNumber},
+            max_capacity = ${maxCapacity}
         WHERE id = ${lab.id}
       `;
       
       await logAuditAction(username, "UPDATE_LAB", "suas_laboratories", String(lab.id), prevVal, JSON.stringify(lab));
     } else {
       const result = await sql`
-        INSERT INTO suas_laboratories (name, code, building, floor, location, seating_capacity, total_computers, operating_system, primary_purpose, lab_in_charge, lab_assistant, status)
-        VALUES (${lab.name}, ${lab.code}, ${lab.building}, ${lab.floor}, ${lab.location}, ${parseInt(lab.seating_capacity) || 0}, ${parseInt(lab.total_computers) || 0}, ${lab.operating_system}, ${lab.primary_purpose}, ${lab.lab_in_charge}, ${lab.lab_assistant}, ${lab.status || "Active"})
+        INSERT INTO suas_laboratories (
+          name, code, building, floor, location, seating_capacity, total_computers, 
+          operating_system, primary_purpose, lab_in_charge, lab_assistant, status, 
+          series_prefix, starting_number, current_number, max_capacity
+        ) VALUES (
+          ${lab.name}, ${lab.code}, ${lab.building}, ${lab.floor}, ${lab.location}, 
+          ${parseInt(lab.seating_capacity) || 0}, ${parseInt(lab.total_computers) || 0}, 
+          ${lab.operating_system}, ${lab.primary_purpose}, ${lab.lab_in_charge}, ${lab.lab_assistant}, 
+          ${lab.status || "Active"}, ${seriesPrefix}, ${startingNumber}, 0, ${maxCapacity}
+        )
         RETURNING id
       `;
       await logAuditAction(username, "CREATE_LAB", "suas_laboratories", String(result[0].id), "", JSON.stringify(lab));
@@ -1301,89 +1791,622 @@ export async function deleteMaintenanceLog(id: number, username: string) {
 /**
  * Fetches inventory items.
  */
-export async function getInventory() {
-  try {
-    const sql = getSql();
-    await initDatabase();
-    const result = await sql`
-      SELECT i.*, l.name as lab_name, l.code as lab_code
-      FROM suas_inventory i
-      JOIN suas_laboratories l ON i.lab_id = l.id
-      ORDER BY i.device_type ASC, i.asset_number ASC
-    `;
-    return { success: true, data: result };
-  } catch (error: any) {
-    console.error("Failed to fetch inventory:", error);
-    return { success: false, error: error.message };
-  }
-}
-
 /**
- * Saves an inventory item.
+ * Fetches all IT Assets with metadata, timeline events, and attachments.
  */
-export async function saveInventoryItem(item: any, username: string) {
+export async function getAssets() {
   try {
     const sql = getSql();
     await initDatabase();
     
-    let prevVal = "";
-
-    if (item.id) {
-      const prevRes = await sql`SELECT * FROM suas_inventory WHERE id = ${item.id}`;
-      prevVal = prevRes[0] ? JSON.stringify(prevRes[0]) : "";
-
-      await sql`
-        UPDATE suas_inventory
-        SET lab_id = ${parseInt(item.lab_id)},
-            device_type = ${item.device_type},
-            asset_number = ${item.asset_number},
-            cpu = ${item.cpu || null},
-            ram = ${item.ram || null},
-            storage = ${item.storage || null},
-            monitor = ${item.monitor || null},
-            printer_details = ${item.printer_details || null},
-            projector_details = ${item.projector_details || null},
-            ups_details = ${item.ups_details || null},
-            network_details = ${item.network_details || null},
-            purchase_date = ${item.purchase_date},
-            warranty_details = ${item.warranty_details || null},
-            vendor_details = ${item.vendor_details || null},
-            status = ${item.status || "Active"}
-        WHERE id = ${item.id}
-      `;
+    // Fetch all active assets with lab name/code, parent CPU name, and mirrored inventory id
+    const result = await sql`
+      SELECT a.*, l.name as lab_name, l.code as lab_code, p.lab_asset_id as parent_cpu_lab_asset_id, i.id as inventory_id
+      FROM suas_assets a
+      LEFT JOIN suas_laboratories l ON a.lab_id = l.id
+      LEFT JOIN suas_assets p ON a.parent_cpu_id = p.id
+      LEFT JOIN suas_inventory i ON a.lab_asset_id = i.asset_number
+      WHERE a.is_deleted = false
+      ORDER BY a.global_asset_id DESC
+    `;
+    
+    const assetsWithDetails = [];
+    for (const row of result) {
+      const attachments = await sql`SELECT image_type, image_url FROM suas_asset_attachments WHERE asset_id = ${row.id}`;
+      const lifecycle = await sql`SELECT event_type, details, created_by, created_at FROM suas_asset_lifecycle_events WHERE asset_id = ${row.id} ORDER BY created_at DESC`;
+      const transfers = await sql`SELECT from_lab_id, to_lab_id, old_lab_asset_id, new_lab_asset_id, transferred_by, transferred_at FROM suas_asset_transfers WHERE asset_id = ${row.id} ORDER BY transferred_at DESC`;
       
-      await logAuditAction(username, "UPDATE_INVENTORY", "suas_inventory", String(item.id), prevVal, JSON.stringify(item));
-    } else {
-      const result = await sql`
-        INSERT INTO suas_inventory (lab_id, device_type, asset_number, cpu, ram, storage, monitor, printer_details, projector_details, ups_details, network_details, purchase_date, warranty_details, vendor_details, status)
-        VALUES (${parseInt(item.lab_id)}, ${item.device_type}, ${item.asset_number}, ${item.cpu || null}, ${item.ram || null}, ${item.storage || null}, ${item.monitor || null}, ${item.printer_details || null}, ${item.projector_details || null}, ${item.ups_details || null}, ${item.network_details || null}, ${item.purchase_date}, ${item.warranty_details || null}, ${item.vendor_details || null}, ${item.status || "Active"})
-        RETURNING id
-      `;
-      await logAuditAction(username, "CREATE_INVENTORY", "suas_inventory", String(result[0].id), "", JSON.stringify(item));
+      assetsWithDetails.push({
+        ...row,
+        attachments,
+        lifecycle,
+        transfers
+      });
     }
 
-    return { success: true };
+    return { success: true, data: assetsWithDetails };
   } catch (error: any) {
-    console.error("Failed to save inventory item:", error);
+    console.error("Failed to get assets:", error);
     return { success: false, error: error.message };
   }
 }
 
 /**
- * Deletes an inventory item.
+ * Validates unique constraints across active assets to prevent duplicate records.
+ */
+export async function checkDuplicateAssetDetails(
+  id: string | null,
+  serial: string,
+  serviceTag: string,
+  mac: string,
+  ip: string,
+  hostname: string,
+  computerName: string,
+  barcode: string
+) {
+  try {
+    const sql = getSql();
+    
+    // Check Serial Number
+    if (serial) {
+      const dups = id 
+        ? await sql`SELECT global_asset_id FROM suas_assets WHERE serial_number = ${serial} AND id != ${id}::uuid AND is_deleted = false`
+        : await sql`SELECT global_asset_id FROM suas_assets WHERE serial_number = ${serial} AND is_deleted = false`;
+      if (dups.length > 0) return `Duplicate Serial Number found: ${serial} already belongs to asset ${dups[0].global_asset_id}`;
+    }
+
+    // Check Service Tag
+    if (serviceTag) {
+      const dups = id 
+        ? await sql`SELECT global_asset_id FROM suas_assets WHERE service_tag = ${serviceTag} AND id != ${id}::uuid AND is_deleted = false`
+        : await sql`SELECT global_asset_id FROM suas_assets WHERE service_tag = ${serviceTag} AND is_deleted = false`;
+      if (dups.length > 0) return `Duplicate Service Tag found: ${serviceTag} already belongs to asset ${dups[0].global_asset_id}`;
+    }
+
+    // Check MAC Address
+    if (mac) {
+      const dups = id 
+        ? await sql`SELECT global_asset_id FROM suas_assets WHERE mac_address = ${mac} AND id != ${id}::uuid AND is_deleted = false`
+        : await sql`SELECT global_asset_id FROM suas_assets WHERE mac_address = ${mac} AND is_deleted = false`;
+      if (dups.length > 0) return `Duplicate MAC Address found: ${mac} already belongs to asset ${dups[0].global_asset_id}`;
+    }
+
+    // Check IP
+    if (ip && ip !== "0.0.0.0" && ip !== "127.0.0.1") {
+      const dups = id 
+        ? await sql`SELECT global_asset_id FROM suas_assets WHERE ipv4 = ${ip} AND id != ${id}::uuid AND is_deleted = false`
+        : await sql`SELECT global_asset_id FROM suas_assets WHERE ipv4 = ${ip} AND is_deleted = false`;
+      if (dups.length > 0) return `Duplicate IP Address found: ${ip} already belongs to asset ${dups[0].global_asset_id}`;
+    }
+
+    // Check Barcode
+    if (barcode) {
+      const dups = id 
+        ? await sql`SELECT global_asset_id FROM suas_assets WHERE barcode_data = ${barcode} AND id != ${id}::uuid AND is_deleted = false`
+        : await sql`SELECT global_asset_id FROM suas_assets WHERE barcode_data = ${barcode} AND is_deleted = false`;
+      if (dups.length > 0) return `Duplicate Barcode found: ${barcode} already belongs to asset ${dups[0].global_asset_id}`;
+    }
+
+    // Check Hostname
+    if (hostname) {
+      const dups = id 
+        ? await sql`SELECT global_asset_id FROM suas_assets WHERE hostname = ${hostname} AND id != ${id}::uuid AND is_deleted = false`
+        : await sql`SELECT global_asset_id FROM suas_assets WHERE hostname = ${hostname} AND is_deleted = false`;
+      if (dups.length > 0) return `Duplicate Hostname found: ${hostname} already belongs to asset ${dups[0].global_asset_id}`;
+    }
+
+    // Check Computer Name
+    if (computerName) {
+      const dups = id 
+        ? await sql`SELECT global_asset_id FROM suas_assets WHERE computer_name = ${computerName} AND id != ${id}::uuid AND is_deleted = false`
+        : await sql`SELECT global_asset_id FROM suas_assets WHERE computer_name = ${computerName} AND is_deleted = false`;
+      if (dups.length > 0) return `Duplicate Computer Name found: ${computerName} already belongs to asset ${dups[0].global_asset_id}`;
+    }
+
+    return null;
+  } catch (err: any) {
+    console.error("Duplicate validation error:", err);
+    return null;
+  }
+}
+
+/**
+ * Saves (Creates/Updates) an IT Asset record.
+ * Handles dual-ID generation, capacity configuration limits, and duplicate validations.
+ */
+export async function saveAsset(asset: any, username: string) {
+  try {
+    const sql = getSql();
+    await initDatabase();
+
+    const isEdit = asset.id ? true : false;
+    
+    // Clean inputs
+    const labId = parseInt(asset.lab_id);
+    const assetType = asset.asset_type || asset.device_type || "CPU";
+    const brand = (asset.brand || "").trim();
+    const manufacturer = (asset.manufacturer || "").trim();
+    const modelNumber = (asset.model_number || "").trim();
+    const serialNumber = (asset.serial_number || "").trim();
+    const serviceTag = (asset.service_tag || "").trim();
+    const expressServiceCode = (asset.express_service_code || "").trim();
+    const mtm = (asset.mtm || "").trim();
+    const productNumber = (asset.product_number || "").trim();
+    const manufactureDate = asset.manufacture_date || null;
+    const purchaseDate = asset.purchase_date || null;
+    const invoiceNumber = (asset.invoice_number || "").trim();
+    const warrantyStart = asset.warranty_start || null;
+    const warrantyEnd = asset.warranty_end || null;
+    const vendor = (asset.vendor || "").trim();
+    const status = asset.status || "Installed";
+    const parentCpuId = asset.parent_cpu_id || null;
+
+    // Network Details
+    const computerName = (asset.computer_name || "").trim();
+    const hostname = (asset.hostname || "").trim();
+    const ipv4 = (asset.ipv4 || "").trim();
+    const ipv6 = (asset.ipv6 || "").trim();
+    const macAddress = (asset.mac_address || "").trim().toUpperCase();
+    const wifiMac = (asset.wifi_mac || "").trim().toUpperCase();
+    const lanMac = (asset.lan_mac || "").trim().toUpperCase();
+    const gateway = (asset.gateway || "").trim();
+    const dns = (asset.dns || "").trim();
+    const ipType = asset.ip_type || "DHCP";
+    const domain = (asset.domain || "").trim();
+    const workgroup = (asset.workgroup || "").trim();
+    const lastSeenDate = asset.last_seen_date || null;
+    const networkStatus = asset.network_status || "Offline";
+    const reservedIp = asset.reserved_ip === true || asset.reserved_ip === 'true';
+
+    // Hardware Details
+    const processor = (asset.processor || "").trim();
+    const ram = (asset.ram || "").trim();
+    const storage = (asset.storage || "").trim();
+    const storageType = asset.storage_type || "SSD";
+    const gpu = (asset.gpu || "").trim();
+    const motherboard = (asset.motherboard || "").trim();
+    const biosVersion = (asset.bios_version || "").trim();
+    const operatingSystem = (asset.operating_system || "").trim();
+    const officeVersion = (asset.office_version || "").trim();
+
+    // Display specifications
+    const screenSize = (asset.screen_size || "").trim();
+    const resolution = (asset.resolution || "").trim();
+    const barcodeData = (asset.barcode_data || "").trim();
+
+    // Attachments
+    const newAttachments = asset.attachments || []; // Array of { image_type, image_url }
+
+    // Pre-save duplicate check
+    const duplicateError = await checkDuplicateAssetDetails(
+      isEdit ? asset.id : null,
+      serialNumber,
+      serviceTag,
+      macAddress,
+      ipv4,
+      hostname,
+      computerName,
+      barcodeData
+    );
+
+    if (duplicateError) {
+      return { success: false, error: duplicateError };
+    }
+
+    if (!isEdit) {
+      // 1. Fetch Lab configuration
+      const labs = await sql`
+        SELECT id, name, code, series_prefix, starting_number, current_number, max_capacity
+        FROM suas_laboratories
+        WHERE id = ${labId}
+      `;
+
+      if (labs.length === 0) {
+        return { success: false, error: "Target laboratory not found." };
+      }
+
+      const lab = labs[0];
+      const maxCap = lab.max_capacity || 60;
+      const currentNum = lab.current_number || 0;
+
+      // 2. Capacity validation check
+      if (currentNum >= maxCap) {
+        return { success: false, error: "Maximum Lab Capacity Reached." };
+      }
+
+      // 3. Generate IDs
+      const nextNum = currentNum + 1;
+      const seriesPrefix = lab.series_prefix || lab.code || "AST";
+      const labAssetId = `${seriesPrefix}-${String(nextNum).padStart(3, '0')}`;
+
+      // Global Asset ID: AST-{YEAR}-{8 digit running number}
+      const year = new Date().getFullYear();
+      const countRes = await sql`SELECT COUNT(*)::int as total FROM suas_assets`;
+      const runningNum = String(countRes[0].total + 1).padStart(8, '0');
+      const globalAssetId = `AST-${year}-${runningNum}`;
+
+      // QR Code Content JSON structured format
+      const qrContent = {
+        AssetID: globalAssetId,
+        LabAssetID: labAssetId,
+        Lab: lab.name,
+        AssetType: assetType,
+        Brand: brand,
+        Model: modelNumber,
+        Serial: serialNumber,
+        ServiceTag: serviceTag,
+        Status: status
+      };
+      const qrJson = JSON.stringify(qrContent);
+      const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrJson)}`;
+
+      // 4. Save inside database
+      const insertRes = await sql`
+        INSERT INTO suas_assets (
+          global_asset_id, lab_asset_id, lab_id, asset_type, brand, manufacturer, model_number, 
+          serial_number, service_tag, express_service_code, mtm, product_number, manufacture_date, 
+          purchase_date, invoice_number, warranty_start, warranty_end, vendor, status, parent_cpu_id, 
+          computer_name, hostname, ipv4, ipv6, mac_address, wifi_mac, lan_mac, gateway, dns, ip_type, 
+          domain, workgroup, last_seen_date, network_status, reserved_ip, processor, ram, storage, 
+          storage_type, gpu, motherboard, bios_version, operating_system, office_version, screen_size, 
+          resolution, barcode_data, qr_json, qr_image
+        ) VALUES (
+          ${globalAssetId}, ${labAssetId}, ${labId}, ${assetType}, ${brand}, ${manufacturer}, ${modelNumber}, 
+          ${serialNumber}, ${serviceTag}, ${expressServiceCode}, ${mtm}, ${productNumber}, ${manufactureDate}, 
+          ${purchaseDate}, ${invoiceNumber}, ${warrantyStart}, ${warrantyEnd}, ${vendor}, ${status}, ${parentCpuId}, 
+          ${computerName}, ${hostname}, ${ipv4}, ${ipv6}, ${macAddress}, ${wifiMac}, ${lanMac}, ${gateway}, ${dns}, ${ipType}, 
+          ${domain}, ${workgroup}, ${lastSeenDate}, ${networkStatus}, ${reservedIp}, ${processor}, ${ram}, ${storage}, 
+          ${storageType}, ${gpu}, ${motherboard}, ${biosVersion}, ${operatingSystem}, ${officeVersion}, ${screenSize}, 
+          ${resolution}, ${barcodeData}, ${qrJson}, ${qrImage}
+        )
+        RETURNING id
+      `;
+
+      const newAssetId = insertRes[0].id;
+
+      // Mirror insert into suas_inventory for backward compatibility
+      await sql`
+        INSERT INTO suas_inventory (lab_id, device_type, asset_number, cpu, ram, storage, monitor, purchase_date, status)
+        VALUES (${labId}, ${assetType}, ${labAssetId}, ${processor}, ${ram}, ${storage}, ${screenSize}, ${purchaseDate || new Date().toISOString().split('T')[0]}, ${status})
+      `;
+
+      // 5. Update Lab counter
+      await sql`
+        UPDATE suas_laboratories
+        SET current_number = ${nextNum}
+        WHERE id = ${labId}
+      `;
+
+      // 6. Write to lifecycle timeline event (Purchased / Received / Installed)
+      await sql`
+        INSERT INTO suas_asset_lifecycle_events (asset_id, event_type, details, created_by)
+        VALUES (${newAssetId}, ${status}, 'Asset registered and deployed in ' || ${lab.name}, ${username})
+      `;
+
+      // 7. Write to attachments
+      for (const attachment of newAttachments) {
+        if (attachment.image_url) {
+          await sql`
+            INSERT INTO suas_asset_attachments (asset_id, image_type, image_url)
+            VALUES (${newAssetId}, ${attachment.image_type}, ${attachment.image_url})
+          `;
+        }
+      }
+
+      await logAuditAction(username, "CREATE_ASSET", "suas_assets", globalAssetId, "", JSON.stringify(qrContent));
+
+      return { success: true, id: newAssetId, globalAssetId, labAssetId };
+
+    } else {
+      // 1. Fetch current record for version check
+      const currentAssets = await sql`
+        SELECT id, global_asset_id, lab_asset_id, lab_id, status, version
+        FROM suas_assets
+        WHERE id = ${asset.id}::uuid AND is_deleted = false
+      `;
+
+      if (currentAssets.length === 0) {
+        return { success: false, error: "Asset record not found." };
+      }
+
+      const currentAsset = currentAssets[0];
+
+      // Optimistic locking
+      if (asset.version !== undefined && parseInt(asset.version) !== currentAsset.version) {
+        return { success: false, error: "Concurrency Conflict: This record has been modified by another admin. Please refresh." };
+      }
+
+      const prevLabId = currentAsset.lab_id;
+      let finalLabAssetId = currentAsset.lab_asset_id;
+      let finalLabId = prevLabId;
+
+      // Check if transferred to a different laboratory!
+      if (prevLabId !== labId) {
+        const labs = await sql`
+          SELECT id, name, code, series_prefix, starting_number, current_number, max_capacity
+          FROM suas_laboratories
+          WHERE id = ${labId}
+        `;
+
+        if (labs.length === 0) {
+          return { success: false, error: "Target transfer laboratory not found." };
+        }
+
+        const lab = labs[0];
+        const maxCap = lab.max_capacity || 60;
+        const currentNum = lab.current_number || 0;
+
+        if (currentNum >= maxCap) {
+          return { success: false, error: `Transfer failed: Target laboratory ${lab.name} capacity reached.` };
+        }
+
+        const nextNum = currentNum + 1;
+        const seriesPrefix = lab.series_prefix || lab.code || "AST";
+        finalLabAssetId = `${seriesPrefix}-${String(nextNum).padStart(3, '0')}`;
+        finalLabId = labId;
+
+        // Log transfer history
+        await sql`
+          INSERT INTO suas_asset_transfers (asset_id, from_lab_id, to_lab_id, old_lab_asset_id, new_lab_asset_id, transferred_by)
+          VALUES (${asset.id}::uuid, ${prevLabId}, ${labId}, ${currentAsset.lab_asset_id}, ${finalLabAssetId}, ${username})
+        `;
+
+        // Update target lab count
+        await sql`
+          UPDATE suas_laboratories
+          SET current_number = ${nextNum}
+          WHERE id = ${labId}
+        `;
+
+        // Add transfer event to timeline
+        await sql`
+          INSERT INTO suas_asset_lifecycle_events (asset_id, event_type, details, created_by)
+          VALUES (${asset.id}::uuid, 'Transfer', 'Transferred from Lab ID ' || ${prevLabId} || ' to ' || ${lab.name} || '. New ID: ' || ${finalLabAssetId}, ${username})
+        `;
+      }
+
+      // Update status event if changed
+      if (currentAsset.status !== status) {
+        await sql`
+          INSERT INTO suas_asset_lifecycle_events (asset_id, event_type, details, created_by)
+          VALUES (${asset.id}::uuid, ${status}, 'Status updated to: ' || ${status}, ${username})
+        `;
+      }
+
+      const nextVersion = currentAsset.version + 1;
+
+      // Update values
+      await sql`
+        UPDATE suas_assets
+        SET lab_id = ${finalLabId},
+            lab_asset_id = ${finalLabAssetId},
+            asset_type = ${assetType},
+            brand = ${brand},
+            manufacturer = ${manufacturer},
+            model_number = ${modelNumber},
+            serial_number = ${serialNumber},
+            service_tag = ${serviceTag},
+            express_service_code = ${expressServiceCode},
+            mtm = ${mtm},
+            product_number = ${productNumber},
+            manufacture_date = ${manufactureDate},
+            purchase_date = ${purchaseDate},
+            invoice_number = ${invoiceNumber},
+            warranty_start = ${warrantyStart},
+            warranty_end = ${warrantyEnd},
+            vendor = ${vendor},
+            status = ${status},
+            parent_cpu_id = ${parentCpuId ? parentCpuId : null},
+            computer_name = ${computerName},
+            hostname = ${hostname},
+            ipv4 = ${ipv4},
+            ipv6 = ${ipv6},
+            mac_address = ${macAddress},
+            wifi_mac = ${wifiMac},
+            lan_mac = ${lanMac},
+            gateway = ${gateway},
+            dns = ${dns},
+            ip_type = ${ipType},
+            domain = ${domain},
+            workgroup = ${workgroup},
+            last_seen_date = ${lastSeenDate},
+            network_status = ${networkStatus},
+            reserved_ip = ${reservedIp},
+            processor = ${processor},
+            ram = ${ram},
+            storage = ${storage},
+            storage_type = ${storageType},
+            gpu = ${gpu},
+            motherboard = ${motherboard},
+            bios_version = ${biosVersion},
+            operating_system = ${operatingSystem},
+            office_version = ${officeVersion},
+            screen_size = ${screenSize},
+            resolution = ${resolution},
+            barcode_data = ${barcodeData},
+            version = ${nextVersion}
+        WHERE id = ${asset.id}::uuid
+      `;
+
+      // Update mirrored inventory item for backward compatibility
+      await sql`
+        UPDATE suas_inventory
+        SET lab_id = ${finalLabId},
+            device_type = ${assetType},
+            asset_number = ${finalLabAssetId},
+            cpu = ${processor},
+            ram = ${ram},
+            storage = ${storage},
+            monitor = ${screenSize},
+            purchase_date = ${purchaseDate || new Date().toISOString().split('T')[0]},
+            status = ${status}
+        WHERE asset_number = ${currentAsset.lab_asset_id}
+      `;
+
+      // Save attachments
+      await sql`DELETE FROM suas_asset_attachments WHERE asset_id = ${asset.id}::uuid`;
+      for (const attachment of newAttachments) {
+        if (attachment.image_url) {
+          await sql`
+            INSERT INTO suas_asset_attachments (asset_id, image_type, image_url)
+            VALUES (${asset.id}::uuid, ${attachment.image_type}, ${attachment.image_url})
+          `;
+        }
+      }
+
+      await logAuditAction(username, "UPDATE_ASSET", "suas_assets", currentAsset.global_asset_id, JSON.stringify(currentAsset), JSON.stringify(asset));
+
+      return { success: true, id: asset.id, globalAssetId: currentAsset.global_asset_id, labAssetId: finalLabAssetId };
+    }
+  } catch (error: any) {
+    console.error("Failed to save asset:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Soft deletes an asset record (never permanently deletes).
+ */
+export async function deleteAsset(id: string, username: string) {
+  try {
+    const sql = getSql();
+    const assets = await sql`SELECT global_asset_id, lab_asset_id FROM suas_assets WHERE id = ${id}::uuid`;
+    if (assets.length === 0) return { success: false, error: "Asset not found." };
+    
+    const globalId = assets[0].global_asset_id;
+    const labAssetId = assets[0].lab_asset_id;
+
+    // Soft delete
+    await sql`UPDATE suas_assets SET is_deleted = true WHERE id = ${id}::uuid`;
+
+    // Mirror delete from suas_inventory
+    await sql`DELETE FROM suas_inventory WHERE asset_number = ${labAssetId}`;
+
+    // Log lifecycle event 'Disposed'
+    await sql`
+      INSERT INTO suas_asset_lifecycle_events (asset_id, event_type, details, created_by)
+      VALUES (${id}::uuid, 'Disposed', 'Asset soft deleted/disposed by ' || ${username}, ${username})
+    `;
+
+    await logAuditAction(username, "DELETE_ASSET", "suas_assets", globalId, "", "Asset soft deleted");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to delete asset:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Bridges getInventory calls to getAssets for backward compatibility.
+ */
+export async function getInventory() {
+  const res = await getAssets();
+  if (res.success && res.data) {
+    const mapped = res.data.map((item: any) => ({
+      id: item.inventory_id || 0,
+      lab_id: item.lab_id,
+      device_type: item.asset_type,
+      asset_number: item.lab_asset_id,
+      cpu: item.processor,
+      ram: item.ram,
+      storage: item.storage,
+      monitor: item.screen_size || "",
+      printer_details: item.asset_type === "Printer" ? `${item.brand || ""} ${item.model_number || ""}` : "",
+      projector_details: item.asset_type === "Projector" ? `${item.brand || ""} ${item.model_number || ""}` : "",
+      ups_details: item.asset_type === "UPS" ? `${item.brand || ""} ${item.model_number || ""}` : "",
+      network_details: item.asset_type === "Network Device" ? `${item.brand || ""} ${item.model_number || ""}` : "",
+      purchase_date: item.purchase_date ? new Date(item.purchase_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      warranty_details: item.warranty_end ? `Warranty until ${new Date(item.warranty_end).toISOString().split('T')[0]}` : "",
+      vendor_details: item.vendor || "",
+      status: item.status,
+      lab_name: item.lab_name,
+      lab_code: item.lab_code,
+      
+      // Extended properties
+      uuid: item.id,
+      global_asset_id: item.global_asset_id,
+      display_name: `${item.lab_name} - ${item.lab_asset_id}`,
+      brand: item.brand,
+      model_number: item.model_number,
+      serial_number: item.serial_number,
+      service_tag: item.service_tag,
+      mac_address: item.mac_address,
+      ipv4: item.ipv4,
+      hostname: item.hostname,
+      computer_name: item.computer_name,
+      parent_cpu_id: item.parent_cpu_id,
+      attachments: item.attachments,
+      lifecycle: item.lifecycle,
+      transfers: item.transfers,
+      version: item.version
+    }));
+    return { success: true, data: mapped };
+  }
+  return res;
+}
+
+/**
+ * Bridges saveInventoryItem calls to saveAsset for backward compatibility.
+ */
+export async function saveInventoryItem(item: any, username: string) {
+  try {
+    const sql = getSql();
+    let assetId = null;
+
+    if (item.id) {
+      // Find matching UUID from suas_assets by looking up the mirrored inventory
+      const found = await sql`
+        SELECT a.id FROM suas_assets a
+        JOIN suas_inventory i ON a.lab_asset_id = i.asset_number
+        WHERE i.id = ${parseInt(item.id)} AND a.is_deleted = false
+      `;
+      if (found.length > 0) {
+        assetId = found[0].id;
+      }
+    }
+
+    const mappedAsset = {
+      id: assetId,
+      lab_id: item.lab_id,
+      asset_type: item.device_type,
+      brand: item.brand || "",
+      model_number: item.model_number || "",
+      serial_number: item.serial_number || "",
+      service_tag: item.service_tag || "",
+      purchase_date: item.purchase_date,
+      status: item.status,
+      processor: item.cpu || "",
+      ram: item.ram || "",
+      storage: item.storage || "",
+      screen_size: item.monitor || "",
+      vendor: item.vendor_details || "",
+      warranty_end: item.warranty_details ? new Date(item.warranty_details).toISOString().split('T')[0] : null
+    };
+
+    return await saveAsset(mappedAsset, username);
+  } catch (error: any) {
+    console.error("Failed in bridge saveInventoryItem:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Bridges deleteInventoryItem calls to deleteAsset for backward compatibility.
  */
 export async function deleteInventoryItem(id: number, username: string) {
   try {
     const sql = getSql();
-    const prevRes = await sql`SELECT * FROM suas_inventory WHERE id = ${id}`;
-    const prevVal = prevRes[0] ? JSON.stringify(prevRes[0]) : "";
-
-    await sql`DELETE FROM suas_inventory WHERE id = ${id}`;
-    await logAuditAction(username, "DELETE_INVENTORY", "suas_inventory", String(id), prevVal, "");
-
-    return { success: true };
+    const found = await sql`
+      SELECT a.id FROM suas_assets a
+      JOIN suas_inventory i ON a.lab_asset_id = i.asset_number
+      WHERE i.id = ${id} AND a.is_deleted = false
+    `;
+    if (found.length === 0) {
+      return { success: false, error: "Asset not found in directory." };
+    }
+    return await deleteAsset(found[0].id, username);
   } catch (error: any) {
-    console.error("Failed to delete inventory item:", error);
+    console.error("Failed in bridge deleteInventoryItem:", error);
     return { success: false, error: error.message };
   }
 }
@@ -1673,6 +2696,356 @@ export async function deleteDocument(id: number, username: string) {
     return { success: true };
   } catch (error: any) {
     console.error("Failed to delete document:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Perform batch transactional asset imports with complete rollback protection.
+ */
+export async function importAssetsBulk(
+  records: any[],
+  options: {
+    importNewOnly: boolean;
+    updateExisting: boolean;
+    skipDuplicates: boolean;
+    generateQr: boolean;
+    generateLabId: boolean;
+    generateGlobalId: boolean;
+    validateOnly: boolean;
+  },
+  fileName: string,
+  username: string
+) {
+  if (!process.env.DATABASE_URL) {
+    return { success: false, error: "DATABASE_URL is not set in environment variables." };
+  }
+
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const client = await pool.connect();
+  
+  let importedCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+  const failedRows: any[] = [];
+
+  try {
+    await client.query("BEGIN");
+
+    // Fetch all laboratories first to map names to IDs
+    const labsRes = await client.query("SELECT id, name, code, series_prefix, current_number, max_capacity FROM suas_laboratories");
+    const labsList = labsRes.rows;
+
+    for (let index = 0; index < records.length; index++) {
+      const row = records[index];
+      const rowNum = row.__rowNum__ || (index + 2); // Excel row offset
+      
+      // Trim & Normalize strings
+      const trimStr = (v: any) => v && typeof v === "string" ? v.trim() : (v !== undefined && v !== null ? String(v).trim() : "");
+      const labNameInput = trimStr(row.lab_name);
+      const assetType = trimStr(row.asset_type);
+      const brand = trimStr(row.brand);
+      const modelNumber = trimStr(row.model_number);
+      const serialNumber = trimStr(row.serial_number);
+      const serviceTag = trimStr(row.service_tag);
+      const macAddress = trimStr(row.mac_address);
+      const ipv4 = trimStr(row.ipv4);
+      const computerName = trimStr(row.computer_name);
+      const hostname = trimStr(row.hostname);
+      const processor = trimStr(row.processor);
+      const ram = trimStr(row.ram);
+      const storage = trimStr(row.storage);
+      const storageType = trimStr(row.storage_type);
+      const operating_system = trimStr(row.operating_system);
+      const purchase_date = trimStr(row.purchase_date);
+      const warranty_end = trimStr(row.warranty_end);
+      const status = trimStr(row.status) || "Working";
+
+      // 1. Find Lab by name or code
+      const lab = labsList.find(l => 
+        l.name.toLowerCase() === labNameInput.toLowerCase() || 
+        l.code.toLowerCase() === labNameInput.toLowerCase()
+      );
+
+      if (!labNameInput) {
+        failedCount++;
+        failedRows.push({ row: rowNum, error: "Missing Laboratory field." });
+        continue;
+      }
+
+      if (!lab) {
+        failedCount++;
+        failedRows.push({ row: rowNum, error: `Laboratory '${labNameInput}' not found in system.` });
+        continue;
+      }
+
+      if (!assetType) {
+        failedCount++;
+        failedRows.push({ row: rowNum, error: "Missing Asset Type field." });
+        continue;
+      }
+
+      // 2. Check duplicates inside DB
+      let existingAsset: any = null;
+      if (serialNumber) {
+        const dupRes = await client.query("SELECT * FROM suas_assets WHERE serial_number = $1 AND is_deleted = false LIMIT 1", [serialNumber]);
+        if (dupRes.rows.length > 0) existingAsset = dupRes.rows[0];
+      }
+      if (!existingAsset && serviceTag) {
+        const dupRes = await client.query("SELECT * FROM suas_assets WHERE service_tag = $1 AND is_deleted = false LIMIT 1", [serviceTag]);
+        if (dupRes.rows.length > 0) existingAsset = dupRes.rows[0];
+      }
+      if (!existingAsset && macAddress) {
+        const dupRes = await client.query("SELECT * FROM suas_assets WHERE mac_address = $1 AND is_deleted = false LIMIT 1", [macAddress]);
+        if (dupRes.rows.length > 0) existingAsset = dupRes.rows[0];
+      }
+      if (!existingAsset && ipv4 && ipv4.toLowerCase() !== "dhcp") {
+        const dupRes = await client.query("SELECT * FROM suas_assets WHERE ipv4 = $1 AND is_deleted = false LIMIT 1", [ipv4]);
+        if (dupRes.rows.length > 0) existingAsset = dupRes.rows[0];
+      }
+      if (!existingAsset && computerName) {
+        const dupRes = await client.query("SELECT * FROM suas_assets WHERE computer_name = $1 AND is_deleted = false LIMIT 1", [computerName]);
+        if (dupRes.rows.length > 0) existingAsset = dupRes.rows[0];
+      }
+
+      // 3. Handle duplicates
+      if (existingAsset) {
+        if (options.skipDuplicates) {
+          skippedCount++;
+          continue;
+        } else if (options.updateExisting) {
+          // Perform update query
+          const purchaseDateVal = purchase_date ? new Date(purchase_date) : (existingAsset.purchase_date || null);
+          const warrantyEndVal = warranty_end ? new Date(warranty_end) : (existingAsset.warranty_end || null);
+          
+          await client.query(`
+            UPDATE suas_assets SET
+              brand = $1, model_number = $2, serial_number = $3, service_tag = $4,
+              mac_address = $5, ipv4 = $6, computer_name = $7, hostname = $8,
+              processor = $9, ram = $10, storage = $11, storage_type = $12,
+              operating_system = $13, purchase_date = $14, warranty_end = $15,
+              status = $16, version = version + 1
+            WHERE id = $17
+          `, [
+            brand || existingAsset.brand, modelNumber || existingAsset.model_number,
+            serialNumber || existingAsset.serial_number, serviceTag || existingAsset.service_tag,
+            macAddress || existingAsset.mac_address, ipv4 || existingAsset.ipv4,
+            computerName || existingAsset.computer_name, hostname || existingAsset.hostname,
+            processor || existingAsset.processor, ram || existingAsset.ram,
+            storage || existingAsset.storage, storageType || existingAsset.storage_type,
+            operating_system || existingAsset.operating_system, purchaseDateVal, warrantyEndVal,
+            status, existingAsset.id
+          ]);
+
+          // Log lifecycle
+          await client.query(`
+            INSERT INTO suas_asset_lifecycle_events (asset_id, event_type, details, created_by)
+            VALUES ($1, 'Import Update', 'Details updated via Excel Import session.', $2)
+          `, [existingAsset.id, username]);
+
+          updatedCount++;
+          continue;
+        } else {
+          // Reject row
+          failedCount++;
+          failedRows.push({ row: rowNum, error: `Duplicate asset found with matching unique key.` });
+          continue;
+        }
+      }
+
+      if (options.importNewOnly || (!options.importNewOnly && !options.updateExisting && !options.skipDuplicates)) {
+        // 4. Generate missing identifiers
+        let labAssetId = trimStr(row.lab_asset_id);
+        if (!labAssetId) {
+          // Increment lab count
+          const labCountRes = await client.query("SELECT COUNT(*)::int as total FROM suas_assets WHERE lab_id = $1 AND is_deleted = false", [lab.id]);
+          const currentCount = labCountRes.rows[0].total;
+          if (currentCount >= lab.max_capacity) {
+            failedCount++;
+            failedRows.push({ row: rowNum, error: `Maximum seating capacity of ${lab.max_capacity} reached in ${lab.name}.` });
+            continue;
+          }
+          const nextSeq = currentCount + 1;
+          const prefix = lab.series_prefix || lab.code || "LBA";
+          labAssetId = `${prefix}-${String(nextSeq).padStart(3, '0')}`;
+        }
+
+        // Validate generated/provided lab asset ID duplicate
+        const labDupRes = await client.query("SELECT id FROM suas_assets WHERE lab_asset_id = $1 AND is_deleted = false", [labAssetId]);
+        if (labDupRes.rows.length > 0) {
+          failedCount++;
+          failedRows.push({ row: rowNum, error: `Lab Asset ID ${labAssetId} already exists.` });
+          continue;
+        }
+
+        let globalAssetId = trimStr(row.global_asset_id);
+        if (!globalAssetId) {
+          const totalAssetsRes = await client.query("SELECT count(*)::int as total FROM suas_assets");
+          const totalAssetsCount = totalAssetsRes.rows[0].total + importedCount + 1;
+          const year = new Date().getFullYear();
+          globalAssetId = `AST-${year}-${String(totalAssetsCount).padStart(8, '0')}`;
+        }
+
+        // Validate global asset ID duplicate
+        const globDupRes = await client.query("SELECT id FROM suas_assets WHERE global_asset_id = $1", [globalAssetId]);
+        if (globDupRes.rows.length > 0) {
+          failedCount++;
+          failedRows.push({ row: rowNum, error: `Global Asset ID ${globalAssetId} already exists.` });
+          continue;
+        }
+
+        // 5. Generate QR Code JSON
+        const qrContent = {
+          AssetID: globalAssetId,
+          LabAssetID: labAssetId,
+          Lab: lab.name,
+          AssetType: assetType,
+          Brand: brand,
+          Model: modelNumber,
+          Serial: serialNumber,
+          Status: status
+        };
+        const qrJson = JSON.stringify(qrContent);
+        const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrJson)}`;
+
+        const purchaseDateVal = purchase_date ? new Date(purchase_date) : null;
+        const warrantyEndVal = warranty_end ? new Date(warranty_end) : null;
+
+        // 6. Insert into database
+        const insertRes = await client.query(`
+          INSERT INTO suas_assets (
+            global_asset_id, lab_asset_id, lab_id, asset_type, brand, model_number, 
+            serial_number, service_tag, mac_address, ipv4, computer_name, hostname, 
+            processor, ram, storage, storage_type, operating_system, purchase_date, 
+            warranty_end, status, qr_json, qr_image, is_deleted
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, false)
+          RETURNING id
+        `, [
+          globalAssetId, labAssetId, lab.id, assetType, brand, modelNumber,
+          serialNumber, serviceTag, macAddress, ipv4, computerName, hostname,
+          processor, ram, storage, storageType, operating_system, purchaseDateVal,
+          warrantyEndVal, status, qrJson, qrImage
+        ]);
+
+        const newAssetId = insertRes.rows[0].id;
+
+        // Create log lifecycle
+        await client.query(`
+          INSERT INTO suas_asset_lifecycle_events (asset_id, event_type, details, created_by)
+          VALUES ($1, 'Import Create', 'Asset created via Excel Import session.', $2)
+        `, [newAssetId, username]);
+
+        // Mirror insert into suas_inventory for backward compatibility
+        await client.query(`
+          INSERT INTO suas_inventory (
+            lab_id, device_type, asset_number, cpu, ram, storage, monitor, printer_details,
+            projector_details, ups_details, network_details, purchase_date, warranty_details,
+            vendor_details, status
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, '', '', '', '', $8, $9, '', $10)
+          ON CONFLICT (asset_number) DO UPDATE SET
+            status = EXCLUDED.status, cpu = EXCLUDED.cpu, ram = EXCLUDED.ram, storage = EXCLUDED.storage
+        `, [
+          lab.id, assetType, labAssetId, processor, ram, storage, "",
+          purchaseDateVal || new Date(), warranty_end ? `Warranty until ${warranty_end}` : "", status
+        ]);
+
+        importedCount++;
+      }
+    }
+
+    // Check if we should commit or if validation-only
+    if (failedRows.length > 0) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        error: `Import failed: ${failedRows.length} rows have validation errors. The entire operation has been rolled back.`,
+        summary: {
+          total: records.length,
+          imported: 0,
+          updated: 0,
+          skipped: 0,
+          failed: failedRows.length,
+          errors: failedRows
+        }
+      };
+    }
+
+    if (options.validateOnly) {
+      await client.query("ROLLBACK");
+      return {
+        success: true,
+        message: "Data validation completed successfully. Zero errors found.",
+        summary: {
+          total: records.length,
+          imported: importedCount,
+          updated: updatedCount,
+          skipped: skippedCount,
+          failed: 0,
+          errors: []
+        }
+      };
+    }
+
+    // Commit transaction
+    await client.query("COMMIT");
+
+    // Write to import history logs
+    await client.query(`
+      INSERT INTO suas_import_history (file_name, imported_by, total_rows, imported, updated, skipped, failed, error_report)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      fileName, username, records.length, importedCount, updatedCount, skippedCount, failedCount,
+      failedRows.length > 0 ? JSON.stringify(failedRows) : null
+    ]);
+
+    return {
+      success: true,
+      message: `Successfully imported ${importedCount} and updated ${updatedCount} records from Excel.`,
+      summary: {
+        total: records.length,
+        imported: importedCount,
+        updated: updatedCount,
+        skipped: skippedCount,
+        failed: failedCount,
+        errors: failedRows
+      }
+    };
+
+  } catch (error: any) {
+    await client.query("ROLLBACK");
+    console.error("Bulk import failed, transaction rolled back:", error);
+    return {
+      success: false,
+      error: `Database transaction error: ${error.message || error}. The entire operation has been safely rolled back.`,
+      summary: {
+        total: records.length,
+        imported: 0,
+        updated: 0,
+        skipped: 0,
+        failed: records.length,
+        errors: [{ row: "All", error: error.message || String(error) }]
+      }
+    };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Fetches all previous import wizard execution logs.
+ */
+export async function getImportLogs() {
+  try {
+    const sql = getSql();
+    await initDatabase();
+    const result = await sql`
+      SELECT * FROM suas_import_history
+      ORDER BY created_at DESC
+    `;
+    return { success: true, data: result };
+  } catch (error: any) {
+    console.error("Failed to fetch import logs:", error);
     return { success: false, error: error.message };
   }
 }

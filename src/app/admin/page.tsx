@@ -49,7 +49,8 @@ import {
   saveDocument,
   deleteDocument,
   getAuditLogs,
-  clearAuditLogs
+  clearAuditLogs,
+  logAdminLogout
 } from "../actions";
 
 /* ── Type definitions ─────────────────────────────────────────────────────── */
@@ -248,7 +249,7 @@ interface AuditLog {
   timestamp: string;
 }
 
-const LABS = ["Lab A","Lab B","Lab C","Lab D","Lab E","Lab F","Lab G","Lab H","Lab I"];
+const LABS = ["Computer Center", "Basic Programming - I", "Basic Programming - II", "Advanced Cloud Computing", "Web Technologies", "Mobile Computing", "Mathamatics Simulation and Sumulation", "Computer Lab", "IOT Lab"];
 const SEMESTERS = ["Semester I","Semester II","Semester III","Semester IV","Semester V","Semester VI","Semester VII","Semester VIII"];
 
 /* ── Chart bar row helper ─────────────────────────────────────────── */
@@ -993,6 +994,10 @@ export default function AdminDashboard() {
   }, [router, fetchData]);
 
   const handleLogout = React.useCallback(() => {
+    const adminId = localStorage.getItem("admin_id") || "Unknown";
+    const adminName = localStorage.getItem("admin_name") || "Unknown";
+    logAdminLogout(adminId, adminName).catch(err => console.error(err));
+
     localStorage.removeItem("admin_auth");
     localStorage.removeItem("admin_name");
     localStorage.removeItem("admin_role");
