@@ -12,45 +12,54 @@ export default function SignaturePad({ onChange, savedSignature }: SignaturePadP
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [typedName, setTypedName] = useState("");
   const [hasSigned, setHasSigned] = useState(false);
+  const timerRef = useRef<any>(null);
 
   // Derive signature text color based on dark mode status
   const getStrokeColor = () =>
     document.documentElement.classList.contains("dark") ? "#FF0055" : "#E11D48";
 
-  // Re-draw text signature to canvas whenever typedName or theme color changes
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  const handleNameChange = (val: string) => {
+    setTypedName(val);
+    if (timerRef.current) clearTimeout(timerRef.current);
 
-    // Reset/clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!typedName.trim()) {
+    if (!val.trim()) {
       setHasSigned(false);
       onChange(null);
       return;
     }
 
-    // Canvas size setup
-    canvas.width = 400;
-    canvas.height = 120;
+    timerRef.current = setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    // Background setup (solid white to print nicely on PDF)
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Canvas size setup
+      canvas.width = 400;
+      canvas.height = 120;
 
-    // Draw script text signature
-    ctx.fillStyle = getStrokeColor();
-    ctx.font = "italic bold 32px 'Brush Script MT', 'Dancing Script', cursive";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(typedName, canvas.width / 2, canvas.height / 2);
+      // Background setup (solid white to print nicely on PDF)
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    setHasSigned(true);
-    onChange(canvas.toDataURL("image/png"));
-  }, [typedName, onChange]);
+      // Draw script text signature
+      ctx.fillStyle = getStrokeColor();
+      ctx.font = "italic bold 32px 'Brush Script MT', 'Dancing Script', cursive";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(val, canvas.width / 2, canvas.height / 2);
+
+      setHasSigned(true);
+      onChange(canvas.toDataURL("image/png"));
+    }, 100);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   // Handle restoring saved signature (if any)
   useEffect(() => {
@@ -78,7 +87,7 @@ export default function SignaturePad({ onChange, savedSignature }: SignaturePadP
           type="text"
           placeholder="Type your full name (e.g. Dr. Rohan Sharma)"
           value={typedName}
-          onChange={(e) => setTypedName(e.target.value)}
+          onChange={(e) => handleNameChange(e.target.value)}
           className="w-full px-4 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 outline-none text-slate-850 dark:text-slate-200 focus:ring-1 focus:ring-suas-ruby"
         />
 

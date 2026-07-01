@@ -9,7 +9,7 @@ import {
   ChevronUp, Sun, Moon, ShieldCheck, LogOut, ShieldAlert,
   KeyRound, Filter, X, FileSpreadsheet, FileText, CheckCircle2,
   Edit, Plus, ToggleLeft, ToggleRight, Phone, Mail, Image as ImageIcon, Check, Sparkles, Save,
-  Lock, Unlock, Bell, Activity, Layers, FileCode, History, Settings, Monitor, ClipboardList
+  Lock, Unlock, Bell, Activity, Layers, FileCode, History, Settings, Monitor, ClipboardList, Users
 } from "lucide-react";
 import LmsPanels from "../../components/LmsPanels";
 import {
@@ -1680,13 +1680,14 @@ export default function AdminDashboard() {
                   { id: "lab_bookings", name: "Lab Bookings", icon: <Calendar size={15} />, path: "/admin/bookings" },
                   { id: "visitor_register", name: "Visitor Register", icon: <User size={15} />, path: "/admin/visitors" },
                   { id: "daily_work_register", name: "Daily Work Register", icon: <ClipboardList size={15} />, path: "/admin/daily-work" },
+                  { id: "staff_workspace", name: "Staff Profile Workspace", icon: <Users size={15} />, path: "/admin/staff" },
                   { id: "naac_documentation", name: "NAAC Documentation", icon: <ShieldCheck size={15} /> },
                   { id: "ieee_compliance", name: "IEEE Guidelines", icon: <FileText size={15} /> },
                   { id: "document_repository", name: "Doc Repository", icon: <FileText size={15} /> },
                   { id: "notifications", name: "System Alerts", icon: <Bell size={15} /> },
                   { id: "search_audit_logs", name: "Search & Audit Logs", icon: <History size={15} /> }
                 ].map(item => {
-                  const isEnabled = item.id.endsWith("_register") || item.id === "lab_bookings" || item.id === "computers_register" || modulesStatus[item.id];
+                  const isEnabled = item.id.endsWith("_register") || item.id === "lab_bookings" || item.id === "computers_register" || item.id === "staff_workspace" || modulesStatus[item.id];
                   if (!isEnabled) return null; // Hide disabled modules
                   const isActive = activeTab === item.id;
                   return (
