@@ -28,7 +28,7 @@ export interface ServiceResult {
 
 function hashValue(val: string): string {
   if (!val) return "";
-  return createHash("sha256").update(val).digest("hex");
+  return createHash("sha256").update(val + "scsit_suas_secure_salt_2026").digest("hex");
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -861,7 +861,23 @@ export async function deleteNaacDoc(id: any, ...args: any[]): Promise<ServiceRes
 export async function getAdmins(): Promise<ServiceResult> {
   try {
     const users = await prisma.user.findMany({
-      select: { id: true, employeeId: true, name: true, email: true, mobile: true, designation: true, profilePhoto: true, skills: true, experienceYears: true, createdAt: true },
+      select: {
+        id: true,
+        employeeId: true,
+        name: true,
+        email: true,
+        mobile: true,
+        designation: true,
+        profilePhoto: true,
+        skills: true,
+        experienceYears: true,
+        createdAt: true,
+        labStaff: {
+          select: {
+            labId: true,
+          },
+        },
+      },
       orderBy: { name: "asc" },
     });
     return { success: true, data: users };
@@ -879,13 +895,40 @@ export async function saveAdmin(data: any, ...args: any[]): Promise<ServiceResul
       email: payload.email,
       mobile: payload.mobile || "9999999999",
       designation: payload.designation || "Assistant",
-      passwordHash: payload.password ? hashValue(payload.password) : hashValue("scsit@2026"),
       skills: payload.skills || [],
       experienceYears: Number(payload.experienceYears) || 0,
     };
-    const user = id
-      ? await prisma.user.update({ where: { id }, data: { ...userData, passwordHash: undefined } })
-      : await prisma.user.upsert({ where: { email: userData.email }, update: userData, create: userData });
+    
+    const user = await prisma.$transaction(async (tx) => {
+      const savedUser = id
+        ? await tx.user.update({
+            where: { id },
+            data: {
+              ...userData,
+              passwordHash: payload.password ? hashValue(payload.password) : undefined,
+            },
+          })
+        : await tx.user.create({
+            data: {
+              ...userData,
+              passwordHash: payload.password ? hashValue(payload.password) : hashValue("scsit@2026"),
+            },
+          });
+
+      if (payload.assignedLabIds && Array.isArray(payload.assignedLabIds)) {
+        await tx.labStaff.deleteMany({ where: { userId: savedUser.id } });
+        if (payload.assignedLabIds.length > 0) {
+          await tx.labStaff.createMany({
+            data: payload.assignedLabIds.map((labId: string) => ({
+              userId: savedUser.id,
+              labId,
+            })),
+          });
+        }
+      }
+      return savedUser;
+    });
+
     return { success: true, data: user };
   } catch (e: any) {
     return { success: false, error: e.message || "Failed to save admin." };

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Plus, Search, Trash2, Edit2, RefreshCw, ArrowLeft, CheckCircle, AlertTriangle, Loader2, Check, X, FileSpreadsheet, Briefcase, Activity, CalendarDays, Award, Clock, History, Mail, Phone, Shield } from "lucide-react";
-import { getAdmins, saveAdmin, deleteAdmin, getDailyWorkLogs, getMaintenanceLogs, getAuditLogs } from "../../actions";
+import { getAdmins, saveAdmin, deleteAdmin, getDailyWorkLogs, getMaintenanceLogs, getAuditLogs, getLaboratories } from "../../actions";
 
 interface Staff {
   id: string;
@@ -16,14 +16,16 @@ interface Staff {
   certificates?: string[];
   experienceYears: number;
   createdAt: string;
+  labStaff?: { labId: string }[];
 }
 
 const DESIGNATIONS = ["Director Admin", "HOD", "Technical Assistant", "Trainer of Practice", "Lab Assistant", "IT Person"];
-const EMPTY_FORM = { employeeId: "", name: "", email: "", mobile: "", designation: "Lab Assistant", skills: "", experienceYears: 1, password: "" };
+const EMPTY_FORM = { employeeId: "", name: "", email: "", mobile: "", designation: "Lab Assistant", skills: "", experienceYears: 1, password: "", assignedLabIds: [] };
 
 export default function StaffManagement() {
   const router = useRouter();
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [labs, setLabs] = useState<any[]>([]);
   const [workLogs, setWorkLogs] = useState<any[]>([]);
   const [maintLogs, setMaintLogs] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -39,16 +41,18 @@ export default function StaffManagement() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [uRes, wRes, mRes, aRes] = await Promise.all([
+      const [uRes, wRes, mRes, aRes, lRes] = await Promise.all([
         getAdmins(),
         getDailyWorkLogs(),
         getMaintenanceLogs(),
-        getAuditLogs()
+        getAuditLogs(),
+        getLaboratories()
       ]);
       if (uRes.success) setStaffList(uRes.data || []);
       if (wRes.success) setWorkLogs(wRes.data || []);
       if (mRes.success) setMaintLogs(mRes.data || []);
       if (aRes.success) setAuditLogs(aRes.data || []);
+      if (lRes.success) setLabs(lRes.data || []);
     } finally {
       setLoading(false);
     }
@@ -202,6 +206,30 @@ export default function StaffManagement() {
                 <input value={form.skills || ""} onChange={e => setForm((p: any) => ({ ...p, skills: e.target.value }))} placeholder="Networking, Linux, Database Admin, React"
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-rose-500"/>
               </div>
+              <div>
+                <label className="text-xs text-zinc-400 mb-1.5 block font-bold text-zinc-350">Assigned Laboratories</label>
+                <div className="grid grid-cols-2 gap-2.5 bg-zinc-900/40 border border-zinc-800 rounded-lg p-3 max-h-32 overflow-y-auto">
+                  {labs.map(lab => {
+                    const isChecked = form.assignedLabIds?.includes(lab.id);
+                    return (
+                      <label key={lab.id} className="flex items-center gap-2 text-xs text-zinc-300 hover:text-zinc-105 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isChecked || false}
+                          onChange={e => {
+                            const updated = e.target.checked
+                              ? [...(form.assignedLabIds || []), lab.id]
+                              : (form.assignedLabIds || []).filter((id: string) => id !== lab.id);
+                            setForm((p: any) => ({ ...p, assignedLabIds: updated }));
+                          }}
+                          className="accent-rose-500 rounded border-zinc-700 bg-zinc-800"
+                        />
+                        <span>{lab.name} ({lab.code})</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               {!editingId && (
                 <div>
                   <label className="text-xs text-zinc-400 mb-1 block">Initial Security Password *</label>
@@ -262,6 +290,25 @@ export default function StaffManagement() {
                     {selectedStaff.skills.length === 0 ? <span className="text-xs text-zinc-650 italic">No skills listed</span> :
                       selectedStaff.skills.map((s, idx) => <span key={idx} className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[10px] text-rose-350">{s}</span>)}
                   </div>
+                </div>
+              </div>
+
+              {/* Assigned Labs */}
+              <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
+                <span className="text-[10px] text-zinc-500 uppercase tracking-widest block mb-2">Assigned Laboratories:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {!selectedStaff.labStaff || selectedStaff.labStaff.length === 0 ? (
+                    <span className="text-xs text-zinc-600 italic">No laboratories assigned</span>
+                  ) : (
+                    selectedStaff.labStaff.map((ls: any, idx: number) => {
+                      const matched = labs.find(l => l.id === ls.labId);
+                      return matched ? (
+                        <span key={idx} className="px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-xs font-semibold text-rose-400">
+                          {matched.name} ({matched.code})
+                        </span>
+                      ) : null;
+                    })
+                  )}
                 </div>
               </div>
 
@@ -392,7 +439,7 @@ export default function StaffManagement() {
                 <div className="flex items-center justify-between pt-3 border-t border-zinc-800 mt-2">
                   <p className="text-[10px] text-zinc-500 font-semibold">{staff.experienceYears}y Experience</p>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => { setEditingId(staff.id); setForm({ ...staff, skills: staff.skills.join(", ") }); setShowForm(true); }} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-blue-300 transition" title="Edit Profile"><Edit2 size={13}/></button>
+                    <button onClick={() => { setEditingId(staff.id); setForm({ ...staff, skills: staff.skills.join(", "), assignedLabIds: staff.labStaff?.map((ls: any) => ls.labId) || [] }); setShowForm(true); }} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-blue-300 transition" title="Edit Profile"><Edit2 size={13}/></button>
                     {staff.id !== "admin" && (
                       <button onClick={() => handleDelete(staff.id, staff.name)} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-red-400 transition" title="Delete Profile"><Trash2 size={13}/></button>
                     )}
