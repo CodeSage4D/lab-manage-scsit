@@ -44,7 +44,15 @@ export async function verifyAdminLogin(employeeIdOrEmail: string, passwordPlain:
     if (user.passwordHash !== hashValue(passwordPlain)) return { success: false, error: "Invalid password." };
     return {
       success: true,
-      data: { id: user.id, employeeId: user.employeeId, name: user.name, email: user.email, mobile: user.mobile, designation: user.designation },
+      data: {
+        id: user.id,
+        employeeId: user.employeeId,
+        name: user.name,
+        email: user.email,
+        mobile: user.mobile,
+        designation: user.designation,
+        isPinSet: !!user.pinHash
+      },
     };
   } catch (e: any) {
     return { success: false, error: "Authentication failure." };
@@ -62,12 +70,19 @@ export async function verifyAdminPINLogin(employeeId: string, pinPlain: string):
   }
 }
 
-export async function setupAdminPIN(employeeId: string, passwordPlain: string, pinPlain: string): Promise<ServiceResult> {
+export async function setupAdminPIN(userIdOrEmpId: string, passwordPlain: string, pinPlain: string): Promise<ServiceResult> {
   try {
-    const user = await prisma.user.findUnique({ where: { employeeId } });
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: userIdOrEmpId },
+          { employeeId: userIdOrEmpId }
+        ]
+      }
+    });
     if (!user) return { success: false, error: "User not found." };
     if (user.passwordHash !== hashValue(passwordPlain)) return { success: false, error: "Invalid password confirmation." };
-    await prisma.user.update({ where: { employeeId }, data: { pinHash: hashValue(pinPlain) } });
+    await prisma.user.update({ where: { id: user.id }, data: { pinHash: hashValue(pinPlain) } });
     return { success: true };
   } catch (e: any) {
     return { success: false, error: "PIN setup failed." };
