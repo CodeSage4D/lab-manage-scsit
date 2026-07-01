@@ -6,6 +6,17 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 
 ---
 
+## [0.5.0] — 2026-07-01
+
+### Added
+- **`prisma/seed.ts`**: Mapped and seeded 9 physical computer laboratories, in-charge staff mappings, Software Master Catalog, and Faculty Software Request records.
+- **`src/app/admin/staff/page.tsx`**: Rendered assigned laboratories list and dynamic checkboxes inside the staff edit/create form.
+
+### Changed
+- **`src/app/actions.ts`**: Salted the `hashValue` SHA-256 helper function and enhanced the `saveAdmin` action to transactional `$transaction` to sync `LabStaff` join table assignments.
+
+---
+
 ## [0.4.0] — 2026-07-01
 
 ### Added
