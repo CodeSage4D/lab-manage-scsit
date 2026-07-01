@@ -409,7 +409,7 @@ export default function LmsPanels({
     // Load HTML5 QR Code Scanner from CDN
     if (!window.hasOwnProperty("Html5Qrcode")) {
       const qrcodeScript = document.createElement("script");
-      qrcodeScript.src = "https://unpkg.com/html5-qrcode";
+      qrcodeScript.src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
       qrcodeScript.async = true;
       qrcodeScript.onload = () => setHtml5QrcodeReady(true);
       document.body.appendChild(qrcodeScript);

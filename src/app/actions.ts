@@ -5,7 +5,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync, createHash }
 import { headers } from "next/headers";
 
 // Hash helper for passwords and PINs
-export function hashValue(val: string): string {
+function hashValue(val: string): string {
   if (!val) return "";
   return createHash("sha256").update(val).digest("hex");
 }
