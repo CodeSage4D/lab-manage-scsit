@@ -6,6 +6,21 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 
 ---
 
+## [0.4.0] — 2026-07-01
+
+### Added
+- **`src/app/admin/staff/page.tsx`**: Staff Profile & Operations Registry Workspace displaying personal profiles, work logs, maintenance logs, and audit logs.
+- **`src/app/admin/computers/page.tsx`**: Added asset QR/barcode tag scanning lookup and bulk CSV system imports.
+
+### Changed
+- **`src/app/actions.ts`**: Added lookup tag search helper (`getComputerByTag`) and transactional bulk CSV parser seeder (`importComputers`).
+- **`src/app/admin/page.tsx`**: Integrated sidebar menu option routing to the Staff Workspace.
+
+### Fixed
+- **`src/components/SignaturePad.tsx`**: Refactored signature capture to update component state inside input events instead of a render-phase `useEffect` hook, resolving cascading re-render console warnings.
+
+---
+
 ## [0.3.0] — 2026-07-01
 
 ### Added
