@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 ## [0.8.0] — 2026-07-01
 
 ### Added
+- **`prisma/importExcel.ts`**: Implemented an automated Excel workbook generator and parsing engine.
+- **`labs_import_template.xlsx`**: Generated a multi-sheet template containing structured Labs, Computers, and Maintenance rows.
 - **`prisma/schema.prisma`**: Added database indexes on search filter keys and relational fields (`Computer`, `MaintenanceLog`, `Inventory`, `AssetLifecycle`, `SoftwareRequest`, `AuditLog`). Created `HardwareUpgradeHistory` model to track specification upgrades. Connected `SoftwareRequest` to `User` via `facultyUserId`.
 - **`src/middleware.ts`**: Introduced router middleware securing administrative path redirects using secure HTTP-only cookies.
 - **`src/lib/jwt.ts`**: Integrated Node timing-safe SHA-256 HMAC JWT session token signing and verification library.

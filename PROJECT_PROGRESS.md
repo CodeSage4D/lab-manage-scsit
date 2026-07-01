@@ -57,6 +57,8 @@ Files Created:
   + src/lib/jwt.ts                     → Cryptographically signed session JWT utility
   + src/core/auth/middleware.ts        → Server action withAuth RBAC check wrapper
   + ARCHITECTURE_DECISIONS.md          → Project architecture decision records (ADRs)
+  + prisma/importExcel.ts              → Dynamic Excel template creator and parser importer
+  + labs_import_template.xlsx          → Branded Excel spreadsheet loaded with seed data
 
 Files Modified:
   ~ prisma/schema.prisma               → Indexes, upgrades registry, SoftwareRequest relations
@@ -68,6 +70,7 @@ Database Changes:
   - Created HardwareUpgradeHistory model for timeline changes
   - Linked SoftwareRequest to User
   - Executed forced db push to synchronize Neon PostgreSQL cloud instance
+  - Parsed and relationally seeded Labs, Computers, and Maintenance logs from Excel workbook
 
 Security Improvements:
   - Eliminated client-side localStorage authentication loophole
@@ -78,6 +81,7 @@ Security Improvements:
 Verification:
   - TypeScript build check: SUCCESS (0 errors)
   - Prisma validation: SUCCESS (🚀 Valid)
+  - Excel parser run: SUCCESS (Lab J, Lab K, LBJ-001, LBJ-002, LBK-001, MN-2026-9001 successfully upserted)
   - Routing redirect logs: SUCCESS (Redirects on invalid cookies)
 
 =========================================
