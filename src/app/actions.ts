@@ -302,6 +302,113 @@ export async function saveComputer(data: any, authorId?: any, ...args: any[]): P
   }
 }
 
+function incrementIpAddress(baseIp: string, offset: number): string {
+  try {
+    const parts = baseIp.split(".").map(Number);
+    if (parts.length !== 4) return baseIp;
+    let val = parts[0] * 16777216 + parts[1] * 65536 + parts[2] * 256 + parts[3];
+    val += offset;
+    return [
+      (val >>> 24) & 255,
+      (val >>> 16) & 255,
+      (val >>> 8) & 255,
+      val & 255
+    ].join(".");
+  } catch (e) {
+    return baseIp;
+  }
+}
+
+function incrementMacAddress(baseMac: string, offset: number): string {
+  try {
+    const cleanMac = baseMac.replace(/[:-]/g, "");
+    let val = BigInt("0x" + cleanMac);
+    val += BigInt(offset);
+    const hex = val.toString(16).padStart(12, "0");
+    const parts = [];
+    for (let i = 0; i < 12; i += 2) {
+      parts.push(hex.substring(i, i + 2).toUpperCase());
+    }
+    return parts.join(":");
+  } catch (e) {
+    return baseMac;
+  }
+}
+
+export async function generateComputerSeries(data: any): Promise<ServiceResult> {
+  return withAuth(["Director Admin", "Super Admin", "IT Admin"], async (session) => {
+    try {
+      const { labId, prefix, startIndex, endIndex, padWidth, baseIp, baseMac, specs } = data;
+
+      const lab = await prisma.lab.findUnique({ where: { id: labId } });
+      if (!lab) return { success: false, error: "Target Laboratory not found." };
+
+      const count = Number(endIndex) - Number(startIndex) + 1;
+      if (count <= 0) return { success: false, error: "Invalid index range specified." };
+      if (count > 100) return { success: false, error: "Bulk generation limit is 100 terminals per transaction." };
+
+      const result = await prisma.$transaction(async (tx) => {
+        const createdComputers = [];
+        for (let i = Number(startIndex); i <= Number(endIndex); i++) {
+          const suffix = String(i).padStart(Number(padWidth || 3), "0");
+          const computerId = `${prefix}${suffix}`;
+          const hostname = `SCSIT-${prefix}${suffix}`;
+
+          const offset = i - Number(startIndex);
+          const ipAddress = incrementIpAddress(baseIp, offset);
+          const macAddress = incrementMacAddress(baseMac, offset);
+
+          const payload = {
+            computerId,
+            hostname,
+            labId,
+            benchNumber: `Bench ${i}`,
+            ipAddress,
+            macAddress,
+            cpu: specs.cpu || "",
+            motherboard: specs.motherboard || "",
+            ramGb: Number(specs.ramGb || 8),
+            ssdGb: Number(specs.ssdGb || 256),
+            hddGb: Number(specs.hddGb || 0),
+            gpu: specs.gpu || null,
+            monitorDetails: specs.monitorDetails || "",
+            keyboardBrand: specs.keyboardBrand || "",
+            mouseBrand: specs.mouseBrand || "",
+            upsDetails: specs.upsDetails || null,
+            purchaseDate: new Date(specs.purchaseDate || Date.now()),
+            warrantyExpiry: new Date(specs.warrantyExpiry || Date.now()),
+            operatingSystem: specs.operatingSystem || "",
+            vendorDetails: specs.vendorDetails || "",
+            condition: "EXCELLENT" as const,
+            status: "ONLINE" as const,
+          };
+
+          const dbComp = await tx.computer.create({ data: payload });
+          await tx.auditLog.create({
+            data: {
+              userId: session.id,
+              actionPerformed: `Bulk generated computer series: ${computerId}`,
+              tableName: "Computer",
+              recordId: dbComp.id,
+              updatedValue: JSON.stringify(dbComp),
+              ipAddress: "127.0.0.1",
+              browserAgent: "Server Action Series Generator"
+            }
+          });
+          createdComputers.push(dbComp);
+        }
+        return createdComputers;
+      });
+
+      revalidatePath("/admin/computers");
+      return { success: true, data: result };
+    } catch (e: any) {
+      console.error("generateComputerSeries error:", e);
+      return { success: false, error: e.message || "Failed to generate computer series." };
+    }
+  });
+}
+
 export async function deleteComputer(id: any, authorId: any, ...args: any[]): Promise<ServiceResult> {
   try {
     const stringId = String(id);

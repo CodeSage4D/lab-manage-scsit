@@ -18,6 +18,7 @@ import {
   deleteComputer,
   getComputerByTag,
   importComputers,
+  generateComputerSeries,
 } from "../../actions";
 import { exportToExcel } from "../../../utils/exportHelper";
 
@@ -171,6 +172,110 @@ export default function ComputerRegistry() {
   const [scannerError, setScannerError] = useState("");
   const [scannerLoading, setScannerLoading] = useState(false);
 
+  // Bulk series generator states
+  const [showBulkGen, setShowBulkGen] = useState(false);
+  const [bulkGenLoading, setBulkGenLoading] = useState(false);
+  const [bulkForm, setBulkForm] = useState({
+    labId: "",
+    prefix: "",
+    startIndex: 1,
+    endIndex: 10,
+    padWidth: 3,
+    baseIp: "192.168.1.10",
+    baseMac: "00:1A:2B:3C:4D:01",
+    specs: {
+      cpu: "Intel Core i7-12700",
+      motherboard: "Dell 0H9T80",
+      ramGb: 16,
+      ssdGb: 512,
+      hddGb: 1000,
+      gpu: "Nvidia GTX 1660 Super",
+      monitorDetails: "Dell 24 inch SE2422H",
+      keyboardBrand: "Dell",
+      mouseBrand: "Dell",
+      upsDetails: "APC 600VA",
+      operatingSystem: "Windows 11 Pro",
+      vendorDetails: "Dell India Store",
+      purchaseDate: new Date().toISOString().split("T")[0],
+      warrantyExpiry: new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+    }
+  });
+
+  // Dynamic Camera Scanner effect helper
+  useEffect(() => {
+    if (!showScanner) return;
+
+    let scannerInstance: any = null;
+
+    function startCameraScanner() {
+      try {
+        if ((window as any).Html5QrcodeScanner) {
+          scannerInstance = new (window as any).Html5QrcodeScanner(
+            "camera-reader-portal",
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            false
+          );
+          scannerInstance.render(
+            async (decodedText: string) => {
+              let cleanId = decodedText.trim();
+              if (cleanId.includes("/scan/")) {
+                cleanId = cleanId.split("/scan/")[1];
+              } else if (cleanId.includes("id=")) {
+                cleanId = cleanId.split("id=")[1];
+              }
+
+              setScannerLoading(true);
+              setScannerError("");
+              try {
+                const res = await getComputerByTag(cleanId);
+                if (res.success && res.data) {
+                  setShowDetail(res.data);
+                  setShowScanner(false);
+                  if (scannerInstance) {
+                    try { scannerInstance.clear(); } catch(e) {}
+                  }
+                } else {
+                  setScannerError(res.error || "System not found.");
+                }
+              } catch (err) {
+                setScannerError("Scan lookup failed.");
+              } finally {
+                setScannerLoading(false);
+              }
+            },
+            (error: any) => {
+              // Ignore standard scan errors
+            }
+          );
+        }
+      } catch (err) {
+        console.error("Scanner init error:", err);
+      }
+    }
+
+    if (!(window as any).Html5QrcodeScanner) {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/html5-qrcode";
+      script.async = true;
+      script.onload = () => {
+        startCameraScanner();
+      };
+      document.body.appendChild(script);
+    } else {
+      startCameraScanner();
+    }
+
+    return () => {
+      if (scannerInstance) {
+        try {
+          scannerInstance.clear();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    };
+  }, [showScanner]);
+
   // Import state variables
   const [showImport, setShowImport] = useState(false);
   const [importPreview, setImportPreview] = useState<any[]>([]);
@@ -215,6 +320,29 @@ export default function ComputerRegistry() {
       setScannerError("Scan lookup failed.");
     } finally {
       setScannerLoading(false);
+    }
+  };
+
+  const handleBulkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkForm.labId) {
+      alert("Please select a target Laboratory.");
+      return;
+    }
+    setBulkGenLoading(true);
+    try {
+      const res = await generateComputerSeries(bulkForm);
+      if (res.success) {
+        showToast(`Successfully generated ${res.data?.length || 0} computers!`, "success");
+        setShowBulkGen(false);
+        fetchData();
+      } else {
+        alert(res.error || "Failed to generate computer series.");
+      }
+    } catch (err: any) {
+      alert(err.message || "An unexpected error occurred.");
+    } finally {
+      setBulkGenLoading(false);
     }
   };
 
@@ -853,9 +981,12 @@ export default function ComputerRegistry() {
             <button onClick={() => setShowScanner(false)} className="text-zinc-400 hover:text-zinc-200"><X size={18} /></button>
           </div>
 
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Verify workstation allocations. Point your device camera at the asset QR Code / Barcode, drag & drop a tag image, or type the code manually below to inspect details instantly.
-          </p>
+          <div className="text-xs text-zinc-400 leading-relaxed mb-2">
+            Verify workstation allocations. Point device camera at asset label to inspect details.
+          </div>
+          <div id="camera-reader-portal" className="w-full bg-zinc-905 border border-zinc-800 rounded-xl overflow-hidden min-h-[250px] flex items-center justify-center text-xs text-zinc-500 font-medium tracking-wide uppercase">
+            Initializing device camera stream...
+          </div>
 
           <form onSubmit={handleScanSubmit} className="space-y-4">
             <div className="relative">
@@ -904,6 +1035,259 @@ export default function ComputerRegistry() {
                 className="px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition flex items-center gap-2"
               >
                 Inspect Record
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  /* ─── Bulk Series Generator Modal ────────────────────────────────────────── */
+  function BulkGeneratorModal() {
+    return (
+      <div className="fixed inset-0 z-55 flex items-start justify-center pt-6 pb-6 px-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+        <div className="bg-zinc-950 border border-zinc-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto">
+          <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
+            <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+              <Layers className="text-rose-400" size={16} /> Bulk Range Workstation Generator
+            </h3>
+            <button onClick={() => setShowBulkGen(false)} className="text-zinc-400 hover:text-zinc-200">
+              <X size={18} />
+            </button>
+          </div>
+
+          <form onSubmit={handleBulkSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[80vh] scrollbar-thin">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Target Laboratory *</label>
+                <select
+                  value={bulkForm.labId}
+                  onChange={(e) => {
+                    const selectedLab = labs.find(l => l.id === e.target.value);
+                    setBulkForm(prev => ({
+                      ...prev,
+                      labId: e.target.value,
+                      prefix: selectedLab ? `${selectedLab.code}-` : ""
+                    }));
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-255 focus:outline-none focus:border-rose-500"
+                  required
+                >
+                  <option value="">Select Lab Room...</option>
+                  {labs.map(l => (
+                    <option key={l.id} value={l.id}>{l.name} ({l.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">ID Series Prefix (e.g. LBA-)</label>
+                <input
+                  type="text"
+                  value={bulkForm.prefix}
+                  onChange={(e) => setBulkForm(prev => ({ ...prev, prefix: e.target.value }))}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 font-mono uppercase"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                <div>
+                  <label className="text-[10px] text-zinc-400 mb-1 block">Start *</label>
+                  <input
+                    type="number"
+                    value={bulkForm.startIndex}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, startIndex: Number(e.target.value) }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-xs text-zinc-200"
+                    min="1"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 mb-1 block">End *</label>
+                  <input
+                    type="number"
+                    value={bulkForm.endIndex}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, endIndex: Number(e.target.value) }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-xs text-zinc-200"
+                    min="1"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 mb-1 block">Pad *</label>
+                  <input
+                    type="number"
+                    value={bulkForm.padWidth}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, padWidth: Number(e.target.value) }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-xs text-zinc-200"
+                    min="1"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-zinc-900 pt-3">
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Base Start IP (Auto-increments)</label>
+                <input
+                  type="text"
+                  value={bulkForm.baseIp}
+                  onChange={(e) => setBulkForm(prev => ({ ...prev, baseIp: e.target.value }))}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-400 mb-1 block">Base Start MAC (Auto-increments)</label>
+                <input
+                  type="text"
+                  value={bulkForm.baseMac}
+                  onChange={(e) => setBulkForm(prev => ({ ...prev, baseMac: e.target.value }))}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 font-mono"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-zinc-900 pt-3">
+              <h4 className="text-xs font-semibold text-rose-400 mb-2 uppercase tracking-wider">Default hardware specifications</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">CPU *</label>
+                  <input
+                    type="text"
+                    value={bulkForm.specs.cpu}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, cpu: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">Motherboard</label>
+                  <input
+                    type="text"
+                    value={bulkForm.specs.motherboard}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, motherboard: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">RAM GB *</label>
+                  <input
+                    type="number"
+                    value={bulkForm.specs.ramGb}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, ramGb: Number(e.target.value) } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">SSD GB *</label>
+                  <input
+                    type="number"
+                    value={bulkForm.specs.ssdGb}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, ssdGb: Number(e.target.value) } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">HDD GB</label>
+                  <input
+                    type="number"
+                    value={bulkForm.specs.hddGb}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, hddGb: Number(e.target.value) } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">GPU Details</label>
+                  <input
+                    type="text"
+                    value={bulkForm.specs.gpu}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, gpu: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">Monitor Details *</label>
+                  <input
+                    type="text"
+                    value={bulkForm.specs.monitorDetails}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, monitorDetails: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">Keyboard Brand</label>
+                  <input
+                    type="text"
+                    value={bulkForm.specs.keyboardBrand}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, keyboardBrand: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">Mouse Brand</label>
+                  <input
+                    type="text"
+                    value={bulkForm.specs.mouseBrand}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, mouseBrand: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">OS *</label>
+                  <input
+                    type="text"
+                    value={bulkForm.specs.operatingSystem}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, operatingSystem: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">Purchase Date *</label>
+                  <input
+                    type="date"
+                    value={bulkForm.specs.purchaseDate}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, purchaseDate: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">Warranty Expiry *</label>
+                  <input
+                    type="date"
+                    value={bulkForm.specs.warrantyExpiry}
+                    onChange={(e) => setBulkForm(prev => ({ ...prev, specs: { ...prev.specs, warrantyExpiry: e.target.value } }))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-4 border-t border-zinc-900">
+              <button
+                type="button"
+                onClick={() => setShowBulkGen(false)}
+                className="px-4 py-2 border border-zinc-800 hover:bg-zinc-900 text-zinc-400 text-xs font-semibold rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={bulkGenLoading}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg flex items-center gap-2"
+              >
+                {bulkGenLoading ? <Loader2 size={13} className="shrink-0 animate-spin" /> : <Plus size={13} />} Generate Workstations
               </button>
             </div>
           </form>
@@ -1041,6 +1425,7 @@ export default function ComputerRegistry() {
       {showDetail && <DetailModal c={showDetail} />}
       {showScanner && <ScannerModal />}
       {showImport && <ImportModal />}
+      {showBulkGen && <BulkGeneratorModal />}
 
       {/* Header */}
       <div className="border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm sticky top-0 z-40">
@@ -1069,6 +1454,18 @@ export default function ComputerRegistry() {
               className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-805 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition"
             >
               <FileSpreadsheet size={14} /> Export Excel
+            </button>
+            <button
+              onClick={() => setShowBulkGen(true)}
+              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-sm font-medium transition"
+            >
+              <Layers size={14} /> Bulk Generate
+            </button>
+            <button
+              onClick={() => setShowScanner(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-sm font-medium transition"
+            >
+              <QrCode size={14} /> Scan Tag
             </button>
             <button
               onClick={openAdd}

@@ -41,7 +41,7 @@ This is a **Digital Laboratory ERP** — an enterprise-grade Laboratory Operatin
 AUROXN ENGINEERING COMMIT REPORT
 =========================================
 
-Feature Name:     Enterprise Security & Schema Hardening
+Feature Name:     Enterprise Security, Batch Generator & Scanner
 Feature ID:       ECR-004
 Sprint:           Sprint 5 (Hardening)
 Version:          v0.8.0
@@ -51,6 +51,8 @@ Modules Updated:
   ✓ Database Schema & Indirection Hardening
   ✓ Router Security & Session Middleware
   ✓ API Actions Authentication & RBAC
+  ✓ Bulk Range Workstation Generator
+  ✓ Webcam QR & Barcode Auto-Scanner Portal
 
 Files Created:
   + src/middleware.ts                  → Router middleware for HTTP-only cookies checks

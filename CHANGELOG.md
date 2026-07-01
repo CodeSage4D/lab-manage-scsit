@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 ## [0.8.0] — 2026-07-01
 
 ### Added
+- **`src/app/admin/computers/page.tsx`**: Integrated a Range-based Workstation Generator modal wizard and a fully functional Webcam QR/Barcode Scanner portal using the dynamic `html5-qrcode` CDN engine.
 - **`prisma/importExcel.ts`**: Implemented an automated Excel workbook generator and parsing engine.
 - **`labs_import_template.xlsx`**: Generated a multi-sheet template containing structured Labs, Computers, and Maintenance rows.
 - **`prisma/schema.prisma`**: Added database indexes on search filter keys and relational fields (`Computer`, `MaintenanceLog`, `Inventory`, `AssetLifecycle`, `SoftwareRequest`, `AuditLog`). Created `HardwareUpgradeHistory` model to track specification upgrades. Connected `SoftwareRequest` to `User` via `facultyUserId`.
@@ -17,7 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 - **`src/core/auth/middleware.ts`**: Built `withAuth` role-based session validation server decorator.
 
 ### Changed
-- **`src/app/actions.ts`**: Configured automatic HTTP-only `suas_session` cookie injection during password/PIN login, cookie clearing on logout, and wrapped `saveLaboratory`/`deleteLaboratory` write actions inside `withAuth` checks.
+- **`src/app/actions.ts`**: Implemented the `generateComputerSeries` Server Action with incremental IP/MAC calculations and transaction-level inserts. Configured automatic HTTP-only `suas_session` cookie injection during password/PIN login, cookie clearing on logout, and wrapped `saveLaboratory`/`deleteLaboratory` write actions inside `withAuth` checks.
 
 ---
 
