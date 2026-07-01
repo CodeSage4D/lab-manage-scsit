@@ -1015,9 +1015,56 @@ export async function clearAuditLogs(...args: any[]): Promise<ServiceResult> {
 
 export async function getSubmissions(): Promise<ServiceResult> {
   try {
-    const list = await prisma.softwareRequest.findMany({ include: { software: true } });
-    return { success: true, data: list };
+    const list = await prisma.softwareRequest.findMany({
+      include: { software: true },
+      orderBy: { createdAt: "desc" }
+    });
+
+    const mapped = list.map((req, idx) => {
+      let status: "Pending" | "In Progress" | "Installed" = "Pending";
+      if (req.status === "Approved" || req.status === "In Progress" || req.status === "ASSIGNED" || req.status === "DIAGNOSIS" || req.status === "REPAIRING" || req.status === "TESTING") {
+        status = "In Progress";
+      } else if (req.status === "Installed" || req.status === "Closed" || req.status === "RESOLVED") {
+        status = "Installed";
+      }
+
+      const classItem = {
+        id: req.id,
+        subjectCode: "REQ-" + (idx + 1),
+        subjectName: req.subjectName,
+        semesters: [req.semester],
+        softwares: [{
+          id: req.id,
+          semester: req.semester,
+          softwareName: req.software.name,
+          version: req.installDetails
+        }],
+        softwareName: req.software.name,
+        softwareVersion: req.installDetails,
+        framework: "",
+        labSelection: null,
+        status,
+        remarks: req.installDetails,
+        licenseType: req.software.licenseDetails || "FOSS"
+      };
+
+      return {
+        id: idx + 1,
+        submissionId: req.id.slice(0, 8).toUpperCase(),
+        facultyName: req.facultyName,
+        facultyEmail: req.facultyEmail,
+        facultyMobile: "9999999999",
+        department: "SCSIT",
+        semester: req.semester,
+        subjects: [classItem],
+        signatureData: "",
+        createdAt: req.createdAt.toISOString()
+      };
+    });
+
+    return { success: true, data: mapped };
   } catch (e) {
+    console.error("getSubmissions error:", e);
     return { success: true, data: [] };
   }
 }
