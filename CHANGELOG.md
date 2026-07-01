@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](https://semver.org/) and the [Auro
 
 ---
 
+## [0.5.2] — 2026-07-01
+
+### Fixed
+- **`src/app/actions.ts`**: Remapped `getSubmissions` database query return values from a flat list to a nested tree node structure. This aligns with the dashboard layout UI expectations, resolving the TypeError undefined render crash.
+
+---
+
 ## [0.5.1] — 2026-07-01
 
 ### Fixed
