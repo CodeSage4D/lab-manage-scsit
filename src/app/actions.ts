@@ -1153,7 +1153,7 @@ export async function submitForm(facultyData: any, subjects: any[], signature: s
               name: sw.softwareName.trim(),
               category: "Requested",
               latestVersion: sw.version || "Latest",
-              licenseDetails: "FOSS/Open Source",
+              licenseDetails: sw.licenseType || "FOSS/Open Source",
               compatibility: "Windows 11"
             }
           });
@@ -1162,10 +1162,10 @@ export async function submitForm(facultyData: any, subjects: any[], signature: s
           data: {
             facultyName: facultyData.name,
             facultyEmail: facultyData.email,
-            subjectName: sw.semester + " - " + (sw.framework || "Software"),
-            semester: sw.semester,
+            subjectName: facultyData.subject || "General",
+            semester: facultyData.semesters || "I",
             softwareId: dbSoftware.id,
-            installDetails: `Version: ${sw.version || 'Latest'}${sw.framework ? ', Framework: ' + sw.framework : ''}${sw.frameworkVersion ? ' v' + sw.frameworkVersion : ''}`,
+            installDetails: `Version: ${sw.version || 'Latest'}${sw.framework ? ', Framework: ' + sw.framework : ''}${sw.frameworkVersion ? ' v' + sw.frameworkVersion : ''}${sw.licenseType ? ', License: ' + sw.licenseType : ''}${sw.remarks ? ', Remarks: ' + sw.remarks : ''}${facultyData.applicableLabs ? ', Labs: ' + facultyData.applicableLabs : ''}`,
             status: "Pending"
           }
         });

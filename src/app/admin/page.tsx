@@ -1565,41 +1565,61 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* ── Futuristic floating header navigation ── */}
-      <header className="sticky top-0 z-40 no-print bg-white/70 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-zinc-900/50 transition-all duration-300 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_30px_rgba(0,0,0,0.3)]">
-        <div className="h-[80px] max-w-7xl mx-auto px-4 md:px-8 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <a href="/"
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900/50 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 hover:text-suas-ruby dark:hover:text-suas-ruby-neon transition duration-200 flex items-center justify-center"
-              title="Return to Faculty Portal">
-              <ArrowLeft size={16} />
-            </a>
-            <div className="relative group shrink-0 hidden sm:block">
-              <div className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-suas-ruby to-violet-600 opacity-20 group-hover:opacity-40 transition duration-300 blur-sm" />
+      {/* ── Enterprise Institutional Header (Two-tier) ── */}
+      <header className="sticky top-0 z-40 no-print bg-white/95 dark:bg-zinc-950/95 backdrop-blur-xl border-b border-slate-200/60 dark:border-zinc-900/60 transition-all duration-300 shadow-[0_1px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_30px_rgba(0,0,0,0.35)]">
+
+        {/* TIER 1: Institutional Branding Strip */}
+        <div className="border-b border-slate-100/80 dark:border-zinc-900/80 bg-gradient-to-r from-white via-rose-50/10 to-white dark:from-zinc-950 dark:via-zinc-900/30 dark:to-zinc-950">
+          <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 flex items-center gap-4">
+            {/* Logo — prominent display */}
+            <div className="relative shrink-0">
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-[#C1121F] to-rose-600 opacity-10 blur-md" />
               <img
                 src="/img/symbiosis-university-of-applied-sciences-logo.jpg"
-                alt="SUAS Logo"
-                className="w-10 h-10 object-contain rounded-xl bg-white shrink-0 relative border border-slate-200/20"
+                alt="Symbiosis University of Applied Sciences"
+                className="w-12 h-12 md:w-[52px] md:h-[52px] object-contain rounded-2xl bg-white relative border border-slate-200/40 shadow-sm"
               />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-sm font-black tracking-tight text-slate-800 dark:text-white leading-tight font-display flex items-center gap-1.5 uppercase">
-                <span className="bg-gradient-to-r from-suas-ruby to-rose-500 dark:from-suas-ruby-neon dark:to-rose-400 bg-clip-text text-transparent">SCSIT LabOS</span>
-              </h1>
-              <p className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5 truncate max-w-[170px] sm:max-w-none">
-                Laboratory Operating System · Admin Workspace
+            {/* Full institution name block */}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-[13px] md:text-[14px] font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">
+                  Symbiosis University of Applied Sciences
+                </h1>
+                <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest bg-gradient-to-r from-[#C1121F] to-rose-600 text-white shadow-sm shadow-rose-500/25 border border-rose-700/20 hidden sm:inline-flex">
+                  SCSIT-OS
+                </span>
+              </div>
+              <p className="text-[10px] md:text-[11px] font-extrabold text-[#C1121F] dark:text-rose-400 uppercase tracking-widest leading-none mt-1">
+                School of Computer Science &amp; Information Technology (SCSIT)
+              </p>
+              <p className="text-[9px] font-bold text-slate-400 dark:text-zinc-600 uppercase tracking-widest leading-none mt-0.5 hidden md:block">
+                Laboratory Operating System &nbsp;·&nbsp; Admin Workspace &nbsp;·&nbsp; Indore, Madhya Pradesh
               </p>
             </div>
           </div>
+        </div>
 
-          <div className="flex items-center gap-3">
-            {/* Session selector dropdown */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-zinc-900/50 border border-slate-200/40 dark:border-zinc-800/40 rounded-xl hover:border-rose-300/45 dark:hover:border-rose-900/40 transition duration-200">
+        {/* TIER 2: Navigation / Action Strip */}
+        <div className="max-w-7xl mx-auto px-4 md:px-8 h-[48px] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <a href="/"
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900/50 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 hover:text-[#C1121F] dark:hover:text-rose-400 transition duration-200 flex items-center justify-center"
+              title="Return to Faculty Portal">
+              <ArrowLeft size={14} />
+            </a>
+            <div className="h-4 w-px bg-slate-200 dark:bg-zinc-800" />
+            <span className="text-[9px] font-extrabold text-slate-400 dark:text-zinc-500 uppercase tracking-widest hidden sm:block">Admin Workspace</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Session selector */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 dark:bg-zinc-900/50 border border-slate-200/40 dark:border-zinc-800/40 rounded-xl hover:border-rose-300/45 dark:hover:border-rose-900/40 transition duration-200">
               <span className="text-[9px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden sm:block">Session:</span>
               <select
                 value={activeSession}
                 onChange={(e) => handleSessionChange(e.target.value)}
-                className="bg-transparent text-[11px] font-extrabold text-slate-800 dark:text-slate-200 outline-none cursor-pointer border-none p-0 pr-4 appearance-none relative focus:ring-0"
+                className="bg-transparent text-[10px] font-extrabold text-slate-800 dark:text-slate-200 outline-none cursor-pointer border-none p-0 pr-4 appearance-none focus:ring-0"
                 style={{ backgroundImage: 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 20 20\' fill=\'none\'%3E%3Cpath d=\'M7 9l3 3 3-3\' stroke=\'%23e11d48\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'/%3E%3C/svg%3E")', backgroundPosition: 'right center', backgroundRepeat: 'no-repeat', backgroundSize: '0.8rem' }}
               >
                 <option value="July-Dec 2026">July-Dec 2026</option>
@@ -1609,40 +1629,41 @@ export default function AdminDashboard() {
                 <option value="Custom...">Custom...</option>
               </select>
             </div>
-            {/* Active Session details at the top */}
+
+            {/* Admin profile chip */}
             {activeAdmin && (
               <button
                 onClick={() => setShowProfileModal(true)}
                 title="Edit your profile details"
-                className="hidden md:flex items-center gap-2.5 px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-900/30 dark:hover:bg-zinc-900/60 border border-slate-200/45 dark:border-zinc-800/40 rounded-xl transition duration-200 text-left hover:scale-[1.01]"
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-900/30 dark:hover:bg-zinc-900/60 border border-slate-200/45 dark:border-zinc-800/40 rounded-xl transition duration-200 text-left"
               >
                 {activeAdmin.profile_photo ? (
-                  <img src={activeAdmin.profile_photo} alt="P" className="w-7 h-7 rounded-full object-cover border border-slate-200/30" />
+                  <img src={activeAdmin.profile_photo} alt="P" className="w-6 h-6 rounded-full object-cover border border-slate-200/30" />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-rose-50 dark:bg-rose-950/20 text-suas-ruby font-bold text-xs flex items-center justify-center border border-rose-100/40">
+                  <div className="w-6 h-6 rounded-full bg-rose-50 dark:bg-rose-950/20 text-[#C1121F] font-black text-xs flex items-center justify-center border border-rose-100/40">
                     {activeAdmin.name.charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="text-[11px] font-black text-slate-800 dark:text-zinc-200 leading-tight truncate max-w-[120px]">{activeAdmin.name}</p>
-                  <p className="text-[8px] font-black text-suas-ruby dark:text-suas-ruby-neon uppercase tracking-wider leading-none mt-0.5">{activeAdmin.role}</p>
+                  <p className="text-[10px] font-black text-slate-800 dark:text-zinc-200 leading-tight truncate max-w-[100px]">{activeAdmin.name}</p>
+                  <p className="text-[8px] font-black text-[#C1121F] dark:text-rose-400 uppercase tracking-wider leading-none mt-0.5">{activeAdmin.role}</p>
                 </div>
               </button>
             )}
 
-            <div className="h-5 w-px bg-slate-200 dark:bg-zinc-800 mx-1 hidden sm:block" />
+            <div className="h-4 w-px bg-slate-200 dark:bg-zinc-800 hidden sm:block" />
 
             <button onClick={toggleTheme} title="Toggle Theme"
-              className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-900/40 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200 transition duration-200 hover:scale-105">
-              {theme === "light" ? <Moon size={15} /> : <Sun size={15} />}
+              className="p-1.5 rounded-lg bg-slate-50 dark:bg-zinc-900/40 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200 transition duration-200">
+              {theme === "light" ? <Moon size={14} /> : <Sun size={14} />}
             </button>
             <button onClick={fetchData} title="Sync Database"
-              className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-900/40 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200 transition duration-200 hover:scale-105">
-              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+              className="p-1.5 rounded-lg bg-slate-50 dark:bg-zinc-900/40 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200/40 dark:border-zinc-800/40 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200 transition duration-200">
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             </button>
             <button onClick={handleLogout} title="Logout"
-              className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 border border-rose-200/30 dark:border-rose-900/30 text-rose-600 hover:text-rose-500 transition duration-200 hover:scale-105">
-              <LogOut size={15} />
+              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 border border-rose-200/30 dark:border-rose-900/30 text-rose-600 hover:text-rose-500 transition duration-200">
+              <LogOut size={14} />
             </button>
           </div>
         </div>

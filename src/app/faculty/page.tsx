@@ -16,10 +16,14 @@ import { submitForm, lookupSubmissionStatus, getSettings } from "../actions";
 interface SoftwareRow {
   id: string;
   semester: string;
+  subject: string;        // Subject name (e.g. "Web Technologies, Python")
+  labs: string;           // Applicable lab(s) (e.g. "Lab A, Lab B")
   softwareName: string;
   version: string;
   framework: string;
   frameworkVersion: string;
+  remarks: string;        // Optional remarks (e.g. "IDE", "Database", "Web Server")
+  licenseType?: string;   // Optional license type (e.g. "FOSS / Open Source")
   needsReview?: boolean; // flag extracted fields that need manual verification
 }
 
@@ -79,10 +83,13 @@ function extractSoftwareFromText(text: string, defaultSemester: string): Softwar
         semester: sMatch
           ? `Semester ${sMatch[1].toUpperCase().replace(/^(\d)$/, '$1')}`
           : defaultSemester,
+        subject: "",
+        labs: "",
         softwareName,
         version: vMatch ? vMatch[1] : "",
         framework: fMatch ? fMatch[1].trim() : "",
         frameworkVersion: "",
+        remarks: "",
         needsReview: !vMatch, // flag if version is missing
       });
     } else if (line.length > 3 && line.length < 80 && /[A-Za-z]{3}/.test(line)) {
@@ -96,10 +103,13 @@ function extractSoftwareFromText(text: string, defaultSemester: string): Softwar
           semester: sMatch
             ? `Semester ${sMatch[1].toUpperCase()}`
             : defaultSemester,
+          subject: "",
+          labs: "",
           softwareName: cleaned,
           version: vMatch ? vMatch[1] : "",
           framework: "",
           frameworkVersion: "",
+          remarks: "",
           needsReview: true, // always flag generic catches
         });
       }
@@ -155,16 +165,23 @@ export default function FacultyPortal() {
 
   // Faculty details
   const [facultyData, setFacultyData] = useState({
-    name: "", email: "", mobile: "", department: "SCSIT", semester: "Semester I"
+    name: "",
+    email: "",
+    mobile: "",
+    department: "SCSIT",
+    subject: "",        // E.g. "Applied Mathematics, Statistics"
+    semesters: "",      // E.g. "I, III"
+    applicableLabs: ""  // E.g. "Lab A, Lab B, Lab C"
   });
 
   // Software rows
   const [softwareList, setSoftwareList] = useState<SoftwareRow[]>([]);
-  const [currSemester, setCurrSemester] = useState("Semester I");
   const [currSoftware, setCurrSoftware] = useState("");
   const [currVersion, setCurrVersion] = useState("");
   const [currFramework, setCurrFramework] = useState("");
   const [currFrameworkVersion, setCurrFrameworkVersion] = useState("");
+  const [currLicenseType, setCurrLicenseType] = useState("FOSS / Open Source");
+  const [currRemarks, setCurrRemarks] = useState("");
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
 
   // Smart extraction
@@ -259,6 +276,9 @@ export default function FacultyPortal() {
     const cleanMobile = facultyData.mobile.replace(/[^0-9]/g, "");
     if (!facultyData.mobile.trim()) errs.mobile = "Mobile Number is required";
     else if (cleanMobile.length < 10) errs.mobile = "Must be at least 10 digits";
+    if (!facultyData.subject.trim()) errs.subject = "Subject(s) name is required";
+    if (!facultyData.semesters.trim()) errs.semesters = "Semester(s) is required";
+    if (!facultyData.applicableLabs.trim()) errs.applicableLabs = "Applicable Lab(s) is required";
     setErrors(errs);
     if (Object.keys(errs).length === 0) setStep(2);
   };
@@ -274,7 +294,19 @@ export default function FacultyPortal() {
     if (editingRowId) {
       setSoftwareList(prev => prev.map(r =>
         r.id === editingRowId
-          ? { ...r, semester: currSemester, softwareName: currSoftware.trim(), version: currVersion.trim(), framework: currFramework.trim(), frameworkVersion: currFrameworkVersion.trim(), needsReview: false }
+          ? {
+              ...r,
+              semester: facultyData.semesters,
+              subject: facultyData.subject,
+              labs: facultyData.applicableLabs,
+              softwareName: currSoftware.trim(),
+              version: currVersion.trim(),
+              framework: currFramework.trim(),
+              frameworkVersion: currFrameworkVersion.trim(),
+              licenseType: currLicenseType,
+              remarks: currRemarks.trim(),
+              needsReview: false
+            }
           : r
       ));
       setEditingRowId(null);
@@ -282,37 +314,48 @@ export default function FacultyPortal() {
     } else {
       setSoftwareList(prev => [...prev, {
         id: String(Date.now()),
-        semester: currSemester,
+        semester: facultyData.semesters,
+        subject: facultyData.subject,
+        labs: facultyData.applicableLabs,
         softwareName: currSoftware.trim(),
         version: currVersion.trim(),
         framework: currFramework.trim(),
         frameworkVersion: currFrameworkVersion.trim(),
+        licenseType: currLicenseType,
+        remarks: currRemarks.trim(),
         needsReview: false,
       }]);
       showToast("Software row added successfully.");
     }
     setCurrSoftware(""); setCurrVersion(""); setCurrFramework(""); setCurrFrameworkVersion("");
+    setCurrLicenseType("FOSS / Open Source"); setCurrRemarks("");
   };
 
   const handleEditRow = (row: SoftwareRow) => {
     setEditingRowId(row.id);
-    setCurrSemester(row.semester);
     setCurrSoftware(row.softwareName);
     setCurrVersion(row.version);
-    setCurrFramework(row.framework);
-    setCurrFrameworkVersion(row.frameworkVersion);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setCurrFramework(row.framework || "");
+    setCurrFrameworkVersion(row.frameworkVersion || "");
+    setCurrLicenseType(row.licenseType || "FOSS / Open Source");
+    setCurrRemarks(row.remarks || "");
+    window.scrollTo({ top: 300, behavior: "smooth" });
   };
 
   const handleRemoveRow = (id: string) => {
     setSoftwareList(prev => prev.filter(r => r.id !== id));
-    if (editingRowId === id) { setEditingRowId(null); setCurrSoftware(""); setCurrVersion(""); setCurrFramework(""); setCurrFrameworkVersion(""); }
+    if (editingRowId === id) {
+      setEditingRowId(null);
+      setCurrSoftware(""); setCurrVersion(""); setCurrFramework(""); setCurrFrameworkVersion("");
+      setCurrLicenseType("FOSS / Open Source"); setCurrRemarks("");
+    }
     showToast("Row removed.");
   };
 
   const cancelEdit = () => {
     setEditingRowId(null);
     setCurrSoftware(""); setCurrVersion(""); setCurrFramework(""); setCurrFrameworkVersion("");
+    setCurrLicenseType("FOSS / Open Source"); setCurrRemarks("");
   };
 
   // ── Smart Extraction ──────────────────────────────────────────────────
@@ -329,7 +372,17 @@ export default function FacultyPortal() {
   }, [extractText, extractSemester]);
 
   const handleConfirmExtracted = () => {
-    setSoftwareList(prev => [...prev, ...extractPreview]);
+    setSoftwareList(prev => [
+      ...prev,
+      ...extractPreview.map(r => ({
+        ...r,
+        semester: facultyData.semesters,
+        subject: facultyData.subject,
+        labs: facultyData.applicableLabs,
+        licenseType: "FOSS / Open Source",
+        remarks: r.remarks || ""
+      }))
+    ]);
     setExtractPreview([]);
     setExtractText("");
     setShowExtractor(false);
@@ -580,6 +633,76 @@ export default function FacultyPortal() {
                   </div>
                 ))}
 
+                {/* Department (Read-only / Pre-filled) */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                    Department
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value="School of Computer Science & IT (SCSIT)"
+                      disabled
+                      className="w-full pl-10 pr-4 py-3 bg-slate-100 dark:bg-zinc-950 border border-slate-250 dark:border-zinc-850 rounded-xl text-sm font-semibold text-slate-500 dark:text-zinc-500 cursor-not-allowed"
+                    />
+                    <BookOpen className="absolute left-3.5 top-[14px] text-slate-400 dark:text-zinc-700" size={15} />
+                  </div>
+                </div>
+
+                {/* Subject(s) */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                    Subject(s) <span className="text-[#C1121F]">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="e.g. Applied Mathematics, Statistics, J2EE"
+                      value={facultyData.subject}
+                      onChange={e => setFacultyData({ ...facultyData, subject: e.target.value })}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-400/50 transition"
+                    />
+                    <BookOpen className="absolute left-3.5 top-[14px] text-slate-400 dark:text-zinc-600" size={15} />
+                  </div>
+                  {errors.subject && <span className="text-[10px] text-rose-500 font-bold">{errors.subject}</span>}
+                </div>
+
+                {/* Semester(s) */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                    Semester(s) <span className="text-[#C1121F]">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="e.g. I, III, V"
+                      value={facultyData.semesters}
+                      onChange={e => setFacultyData({ ...facultyData, semesters: e.target.value })}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-400/50 transition"
+                    />
+                    <Layers className="absolute left-3.5 top-[14px] text-slate-400 dark:text-zinc-600" size={15} />
+                  </div>
+                  {errors.semesters && <span className="text-[10px] text-rose-500 font-bold">{errors.semesters}</span>}
+                </div>
+
+                {/* Applicable Lab(s) */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                    Applicable Lab(s) <span className="text-[#C1121F]">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="e.g. Lab A, Lab B or To be Assigned"
+                      value={facultyData.applicableLabs}
+                      onChange={e => setFacultyData({ ...facultyData, applicableLabs: e.target.value })}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-400/50 transition"
+                    />
+                    <Package className="absolute left-3.5 top-[14px] text-slate-400 dark:text-zinc-600" size={15} />
+                  </div>
+                  {errors.applicableLabs && <span className="text-[10px] text-rose-500 font-bold">{errors.applicableLabs}</span>}
+                </div>
+
                 <button
                   type="submit"
                   className="w-full py-3 bg-[#C1121F] hover:bg-rose-700 text-white font-extrabold rounded-xl text-[11px] uppercase tracking-widest shadow-md shadow-rose-500/20 hover:shadow-rose-500/35 transition duration-200 cursor-pointer flex items-center justify-center gap-2 mt-2"
@@ -599,21 +722,49 @@ export default function FacultyPortal() {
               transition={{ duration: 0.3 }}
               className="space-y-5"
             >
-              {/* Faculty Badge */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 p-4 rounded-2xl bg-white dark:bg-zinc-900/50 border border-slate-200/60 dark:border-zinc-800/60 shadow-sm">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 flex items-center justify-center font-black text-sm border border-emerald-100/50 dark:border-emerald-900/30">✓</div>
+              {/* Faculty Information (Master Details - Shown Once) */}
+              <div className="bg-white dark:bg-zinc-900/50 border border-slate-200/60 dark:border-zinc-800/60 shadow-sm rounded-2xl p-5 space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-100 dark:border-zinc-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 flex items-center justify-center font-black text-sm border border-emerald-100/50 dark:border-emerald-900/30">✓</div>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider">Faculty Information Verified</h4>
+                      <p className="text-[9px] text-slate-400 font-semibold">Master details for this consolidated requirement sheet</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setStep(1)}
+                    className="text-[9px] font-black uppercase text-[#C1121F] dark:text-rose-400 border border-rose-200/55 dark:border-rose-900/40 px-3 py-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/20 transition cursor-pointer"
+                  >
+                    Edit Info
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-3.5 gap-x-6 text-xs">
                   <div>
-                    <p className="text-[11px] font-black text-slate-800 dark:text-white">{facultyData.name}</p>
-                    <p className="text-[10px] text-slate-400 font-semibold">{facultyData.email} · {facultyData.mobile}</p>
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Faculty Name</span>
+                    <span className="font-black text-slate-800 dark:text-white">{facultyData.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Email &amp; Mobile</span>
+                    <span className="font-semibold text-slate-700 dark:text-zinc-200">{facultyData.email} <br/> {facultyData.mobile}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Department</span>
+                    <span className="font-semibold text-slate-700 dark:text-zinc-200">SCSIT Department</span>
+                  </div>
+                  <div className="sm:col-span-2 md:col-span-1">
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Subject(s)</span>
+                    <span className="font-black text-slate-800 dark:text-white">{facultyData.subject}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Semester(s)</span>
+                    <span className="font-black text-slate-805 dark:text-white">{facultyData.semesters}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Applicable Lab(s)</span>
+                    <span className="font-black text-slate-805 dark:text-white">{facultyData.applicableLabs}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setStep(1)}
-                  className="text-[10px] font-black uppercase text-[#C1121F] dark:text-rose-400 border border-rose-200/50 dark:border-rose-900/30 px-3 py-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/20 transition cursor-pointer"
-                >
-                  Edit Details
-                </button>
               </div>
 
               {/* Smart Extraction Panel */}
@@ -787,24 +938,8 @@ export default function FacultyPortal() {
                     <p className="text-[9px] text-slate-400 font-semibold">Add individual software requirements one by one</p>
                   </div>
                 </div>
-
                 <div className="p-5 md:p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Semester */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Semester <span className="text-[#C1121F]">*</span></label>
-                      <div className="relative">
-                        <select
-                          value={currSemester}
-                          onChange={e => setCurrSemester(e.target.value)}
-                          className="w-full px-3 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-400/50 transition appearance-none pr-9 cursor-pointer"
-                        >
-                          {SEMESTERS.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-3 top-[14px] text-slate-400 pointer-events-none" />
-                      </div>
-                    </div>
-
                     {/* Software Name with Suggestions */}
                     <div className="flex flex-col gap-1.5 relative" ref={dropdownRef}>
                       <label className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Software Name <span className="text-[#C1121F]">*</span></label>
@@ -869,35 +1004,68 @@ export default function FacultyPortal() {
                     </div>
 
                     {/* Framework Version */}
-                    <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <div className="flex flex-col gap-1.5">
                       <label className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
                         Framework Version <span className="text-slate-400 font-normal">(Optional)</span>
                       </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="e.g. 5.0.3, 3.3"
-                          value={currFrameworkVersion}
-                          onChange={e => setCurrFrameworkVersion(e.target.value)}
-                          className="flex-1 px-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-400/50 transition font-mono"
-                        />
-                        {editingRowId && (
-                          <button
-                            type="button"
-                            onClick={cancelEdit}
-                            className="px-4 py-3 text-[11px] font-black uppercase border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800 transition cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        )}
+                      <input
+                        type="text"
+                        placeholder="e.g. 5.0.3, 3.3"
+                        disabled={!currFramework.trim()}
+                        value={currFrameworkVersion}
+                        onChange={e => setCurrFrameworkVersion(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-400/50 transition font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                    </div>
+
+                    {/* License Type */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">License Type</label>
+                      <div className="relative">
+                        <select
+                          value={currLicenseType}
+                          onChange={e => setCurrLicenseType(e.target.value)}
+                          className="w-full px-3 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-400/50 transition appearance-none pr-9 cursor-pointer"
+                        >
+                          <option value="FOSS / Open Source">FOSS / Open Source</option>
+                          <option value="Proprietary / Commercial">Proprietary / Commercial</option>
+                          <option value="Academic / Educational">Academic / Educational</option>
+                          <option value="Freeware / Shareware">Freeware / Shareware</option>
+                        </select>
+                        <ChevronDown size={13} className="absolute right-3 top-[14px] text-slate-400 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Remarks */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Remarks</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. IDE, Database, Compiler, Web Server, JDBC"
+                        value={currRemarks}
+                        onChange={e => setCurrRemarks(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-400/50 transition"
+                      />
+                    </div>
+
+                    {/* Add / Update Buttons */}
+                    <div className="flex gap-2 justify-end md:col-span-2 pt-2">
+                      {editingRowId && (
                         <button
                           type="button"
-                          onClick={handleAddRow}
-                          className="px-6 py-3 bg-[#C1121F] hover:bg-rose-700 text-white text-[11px] font-black uppercase rounded-xl transition duration-200 shrink-0 cursor-pointer shadow-md shadow-rose-500/20 flex items-center gap-1.5"
+                          onClick={cancelEdit}
+                          className="px-5 py-3 text-[11px] font-black uppercase border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800 transition cursor-pointer"
                         >
-                          {editingRowId ? <><Save size={12} /> Update</> : <><Plus size={12} /> Add Row</>}
+                          Cancel
                         </button>
-                      </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleAddRow}
+                        className="px-6 py-3 bg-[#C1121F] hover:bg-rose-700 text-white text-[11px] font-black uppercase rounded-xl transition duration-200 shrink-0 cursor-pointer shadow-md shadow-rose-500/20 flex items-center gap-1.5"
+                      >
+                        {editingRowId ? <><Save size={12} /> Update</> : <><Plus size={12} /> Add Row</>}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -935,12 +1103,12 @@ export default function FacultyPortal() {
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="bg-slate-50/80 dark:bg-zinc-900/50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-zinc-800">
-                          <th className="px-5 py-3">#</th>
-                          <th className="px-5 py-3">Semester</th>
+                          <th className="px-5 py-3">Sr. No.</th>
                           <th className="px-5 py-3">Software Name</th>
                           <th className="px-5 py-3">Version</th>
                           <th className="px-5 py-3">Framework</th>
-                          <th className="px-5 py-3">Fw. Version</th>
+                          <th className="px-5 py-3">License Type</th>
+                          <th className="px-5 py-3">Remarks</th>
                           <th className="px-5 py-3 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -948,18 +1116,16 @@ export default function FacultyPortal() {
                         {softwareList.map((row, idx) => (
                           <tr key={row.id} className={`transition hover:bg-slate-50/50 dark:hover:bg-zinc-900/20 ${editingRowId === row.id ? "bg-rose-50/30 dark:bg-rose-950/10" : ""}`}>
                             <td className="px-5 py-3 text-slate-400 font-black">{idx + 1}</td>
-                            <td className="px-5 py-3">
-                              <span className="px-2 py-0.5 rounded-lg text-[9px] font-black bg-rose-50 dark:bg-rose-950/20 text-[#C1121F] dark:text-rose-400 border border-rose-100/50 dark:border-rose-900/30">
-                                {row.semester}
-                              </span>
-                            </td>
                             <td className="px-5 py-3 font-black text-slate-900 dark:text-white flex items-center gap-1.5">
                               {row.softwareName}
                               {row.needsReview && <AlertCircle size={11} className="text-amber-500 shrink-0" />}
                             </td>
                             <td className="px-5 py-3 font-mono text-slate-600 dark:text-zinc-300">{row.version || <span className="text-slate-300 dark:text-zinc-700 italic">—</span>}</td>
-                            <td className="px-5 py-3 text-slate-500 dark:text-zinc-400">{row.framework || <span className="text-slate-300 dark:text-zinc-700 italic">—</span>}</td>
-                            <td className="px-5 py-3 font-mono text-slate-400 dark:text-zinc-500">{row.frameworkVersion || <span className="text-slate-300 dark:text-zinc-700 italic">—</span>}</td>
+                            <td className="px-5 py-3 text-slate-500 dark:text-zinc-400">
+                              {row.framework ? `${row.framework} ${row.frameworkVersion ? 'v' + row.frameworkVersion : ''}` : <span className="text-slate-300 dark:text-zinc-700 italic">—</span>}
+                            </td>
+                            <td className="px-5 py-3 text-slate-500 dark:text-zinc-400">{row.licenseType || "—"}</td>
+                            <td className="px-5 py-3 text-slate-500 dark:text-zinc-400">{row.remarks || <span className="text-slate-300 dark:text-zinc-700 italic">—</span>}</td>
                             <td className="px-5 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <button
@@ -1197,17 +1363,21 @@ export default function FacultyPortal() {
                 </div>
 
                 {/* Faculty Details */}
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900/40 border border-slate-200/50 dark:border-zinc-800/50 space-y-2">
-                  <h4 className="text-[10px] font-black text-slate-500 dark:text-zinc-500 uppercase tracking-widest">Faculty Verification Details</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-zinc-900/40 border border-slate-200/50 dark:border-zinc-800/50 space-y-3">
+                  <h4 className="text-[10px] font-black text-[#C1121F] dark:text-rose-400 uppercase tracking-widest">Faculty Details</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-3 text-xs">
                     {[
-                      { label: "Full Name", value: facultyData.name },
-                      { label: "Email", value: facultyData.email },
-                      { label: "Mobile", value: facultyData.mobile },
+                      { label: "Faculty Name", value: facultyData.name },
+                      { label: "Email Address", value: facultyData.email },
+                      { label: "Mobile Number", value: facultyData.mobile },
+                      { label: "Department", value: "School of Computer Science & IT (SCSIT)" },
+                      { label: "Subject(s)", value: facultyData.subject },
+                      { label: "Semester(s)", value: facultyData.semesters },
+                      { label: "Applicable Lab(s)", value: facultyData.applicableLabs },
                     ].map(d => (
-                      <div key={d.label}>
-                        <span className="text-[9px] font-bold text-slate-400 block">{d.label}</span>
-                        <span className="font-black text-slate-800 dark:text-white break-all">{d.value}</span>
+                      <div key={d.label} className="border-b border-slate-100 dark:border-zinc-900 pb-1.5 last:border-0 sm:last:border-b">
+                        <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">{d.label}</span>
+                        <span className="font-black text-slate-800 dark:text-white break-words">{d.value}</span>
                       </div>
                     ))}
                   </div>
@@ -1215,25 +1385,25 @@ export default function FacultyPortal() {
 
                 {/* Software Table */}
                 <div className="space-y-2">
-                  <h4 className="text-[10px] font-black text-slate-500 dark:text-zinc-500 uppercase tracking-widest">Software Requirements List ({softwareList.length} items)</h4>
-                  <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden">
+                  <h4 className="text-[10px] font-black text-[#C1121F] dark:text-rose-400 uppercase tracking-widest">Software Requirements Grid ({softwareList.length} items)</h4>
+                  <div className="border border-slate-200 dark:border-zinc-850 rounded-2xl overflow-hidden shadow-sm">
                     <table className="w-full text-left text-[10px]">
                       <thead>
-                        <tr className="bg-slate-50 dark:bg-zinc-900/50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-zinc-800">
-                          {["#", "Semester", "Software", "Version", "Framework", "Fw. Ver"].map(h => (
-                            <th key={h} className="px-3.5 py-2.5">{h}</th>
+                        <tr className="bg-slate-50 dark:bg-zinc-900/50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-zinc-850">
+                          {["Sr. No.", "Software Name", "Version", "Framework", "License Type", "Remarks"].map(h => (
+                            <th key={h} className="px-4 py-3">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-zinc-900">
                         {softwareList.map((row, idx) => (
-                          <tr key={row.id} className="hover:bg-slate-50/50 transition">
-                            <td className="px-3.5 py-2.5 text-slate-400 font-black">{idx + 1}</td>
-                            <td className="px-3.5 py-2.5 text-[#C1121F] dark:text-rose-400 font-black">{row.semester}</td>
-                            <td className="px-3.5 py-2.5 font-black text-slate-900 dark:text-white">{row.softwareName}</td>
-                            <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-zinc-300">{row.version}</td>
-                            <td className="px-3.5 py-2.5 text-slate-500">{row.framework || "—"}</td>
-                            <td className="px-3.5 py-2.5 font-mono text-slate-400">{row.frameworkVersion || "—"}</td>
+                          <tr key={row.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/10 transition">
+                            <td className="px-4 py-3 text-slate-400 font-black">{idx + 1}</td>
+                            <td className="px-4 py-3 font-black text-slate-900 dark:text-white">{row.softwareName}</td>
+                            <td className="px-4 py-3 font-mono text-slate-600 dark:text-zinc-300">{row.version}</td>
+                            <td className="px-4 py-3 text-slate-500">{row.framework ? `${row.framework} ${row.frameworkVersion ? 'v' + row.frameworkVersion : ''}` : "—"}</td>
+                            <td className="px-4 py-3 text-slate-500">{row.licenseType || "—"}</td>
+                            <td className="px-4 py-3 text-slate-450 dark:text-slate-400">{row.remarks || "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1307,36 +1477,41 @@ export default function FacultyPortal() {
           </div>
         </div>
 
-        <div className="space-y-1 border border-gray-200 rounded p-3">
-          <h3 className="text-xs font-bold uppercase text-gray-700 mb-2">Faculty Details</h3>
-          <p className="text-xs"><strong>Name:</strong> {facultyData.name}</p>
-          <p className="text-xs"><strong>Email:</strong> {facultyData.email}</p>
-          <p className="text-xs"><strong>Mobile:</strong> {facultyData.mobile}</p>
-          <p className="text-xs"><strong>Department:</strong> School of Computer Science & Information Technology (SCSIT)</p>
+        <div className="space-y-1.5 border border-gray-300 rounded-lg p-4">
+          <h3 className="text-xs font-bold uppercase text-gray-700 mb-2 border-b pb-1">Faculty Information</h3>
+          <div className="grid grid-cols-2 gap-y-2 text-xs">
+            <p><strong>Faculty Name:</strong> {facultyData.name}</p>
+            <p><strong>Email Address:</strong> {facultyData.email}</p>
+            <p><strong>Mobile Number:</strong> {facultyData.mobile}</p>
+            <p><strong>Department:</strong> School of Computer Science & IT (SCSIT)</p>
+            <p><strong>Subject(s):</strong> {facultyData.subject}</p>
+            <p><strong>Semester(s):</strong> {facultyData.semesters}</p>
+            <p><strong>Applicable Lab(s):</strong> {facultyData.applicableLabs}</p>
+          </div>
         </div>
 
         <div className="space-y-2">
-          <h3 className="text-xs font-bold uppercase text-gray-700">Required Software Specifications</h3>
+          <h3 className="text-xs font-bold uppercase text-gray-700">Required Software Grid</h3>
           <table className="w-full text-left border border-collapse text-xs">
             <thead>
               <tr className="bg-gray-100 border border-gray-300">
-                <th className="p-2 border border-gray-300">#</th>
-                <th className="p-2 border border-gray-300">Semester</th>
+                <th className="p-2 border border-gray-300">Sr. No.</th>
                 <th className="p-2 border border-gray-300">Software Name</th>
                 <th className="p-2 border border-gray-300">Version</th>
                 <th className="p-2 border border-gray-300">Framework</th>
-                <th className="p-2 border border-gray-300">Framework Version</th>
+                <th className="p-2 border border-gray-300">License Type</th>
+                <th className="p-2 border border-gray-300">Remarks</th>
               </tr>
             </thead>
             <tbody>
               {softwareList.map((row, idx) => (
                 <tr key={idx} className="border-b border-gray-200">
                   <td className="p-2 border border-gray-300">{idx + 1}</td>
-                  <td className="p-2 border border-gray-300">{row.semester}</td>
                   <td className="p-2 border border-gray-300 font-bold">{row.softwareName}</td>
                   <td className="p-2 border border-gray-300 font-mono">{row.version}</td>
-                  <td className="p-2 border border-gray-300">{row.framework || "—"}</td>
-                  <td className="p-2 border border-gray-300 font-mono">{row.frameworkVersion || "—"}</td>
+                  <td className="p-2 border border-gray-300">{row.framework ? `${row.framework} ${row.frameworkVersion ? 'v' + row.frameworkVersion : ''}` : "—"}</td>
+                  <td className="p-2 border border-gray-300">{row.licenseType || "—"}</td>
+                  <td className="p-2 border border-gray-300">{row.remarks || "—"}</td>
                 </tr>
               ))}
             </tbody>
