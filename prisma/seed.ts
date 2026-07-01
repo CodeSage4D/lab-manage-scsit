@@ -237,6 +237,93 @@ async function main() {
   }
   console.log("Seeded default staff records and assigned laboratory relationships.");
 
+  // Seed Software Master Catalog
+  const softwareCatalog = [
+    { name: "Scilab", category: "Scientific Computing", latestVersion: "6.1.1", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "Java SE Development Kit", category: "Programming", latestVersion: "26.0.1", licenseDetails: "Oracle/OpenJDK", compatibility: "Windows" },
+    { name: "Visual Studio Code", category: "IDE", latestVersion: "Latest", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "Apache Tomcat", category: "Web Server", latestVersion: "9", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "MySQL Server", category: "Database", latestVersion: "8.0.46", licenseDetails: "Community", compatibility: "Windows" },
+    { name: "MySQL Connector", category: "Database Driver", latestVersion: "9.2", licenseDetails: "Community", compatibility: "Windows" },
+    { name: "Eclipse IDE", category: "IDE", latestVersion: "Latest", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "Spring Initializr", category: "Framework", latestVersion: "Latest", licenseDetails: "Open Source", compatibility: "Web" },
+    { name: "Spyder", category: "IDE", latestVersion: "Latest", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "Jupyter Notebook", category: "IDE", latestVersion: "Latest", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "PyCharm", category: "IDE", latestVersion: "Latest", licenseDetails: "Community", compatibility: "Windows" },
+    { name: "XAMPP", category: "Web Stack", latestVersion: "Latest", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "Power BI Desktop", category: "Analytics", latestVersion: "Latest", licenseDetails: "Microsoft", compatibility: "Windows" },
+    { name: "Microsoft Excel", category: "Productivity", latestVersion: "Microsoft 365", licenseDetails: "Licensed", compatibility: "Windows" },
+    { name: "Python", category: "Programming", latestVersion: "Latest Stable", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "Dev C++", category: "IDE", latestVersion: "Latest", licenseDetails: "Open Source", compatibility: "Windows" },
+    { name: "MongoDB Atlas", category: "Cloud Database", latestVersion: "Latest", licenseDetails: "Cloud", compatibility: "Web" },
+  ];
+
+  const createdSoftware: Record<string, any> = {};
+  for (const sw of softwareCatalog) {
+    const dbSw = await prisma.software.upsert({
+      where: { name: sw.name },
+      update: sw,
+      create: sw,
+    });
+    createdSoftware[sw.name] = dbSw;
+  }
+  console.log(`Seeded ${Object.keys(createdSoftware).length} software master records.`);
+
+  // Clear old requests
+  await prisma.softwareRequest.deleteMany({});
+
+  const requestsData = [
+    // Dr. Devendra Chouhan
+    { facultyName: "Dr. Devendra Chouhan", facultyEmail: "devendra@suas.ac.in", subjectName: "Applied Mathematics, Statistics", semester: "I, III", softwareName: "Scilab", installDetails: "Version 6.1.1, Labs A, B, C, D, E, F, G, H" },
+    
+    // Dr. Kush Bhushanwar
+    { facultyName: "Dr. Kush Bhushanwar", facultyEmail: "kush@suas.ac.in", subjectName: "J2EE", semester: "III", softwareName: "Java SE Development Kit", installDetails: "Version 26.0.1, Lab B" },
+    { facultyName: "Dr. Kush Bhushanwar", facultyEmail: "kush@suas.ac.in", subjectName: "J2EE", semester: "III", softwareName: "Visual Studio Code", installDetails: "Latest Compatible, Lab B" },
+    { facultyName: "Dr. Kush Bhushanwar", facultyEmail: "kush@suas.ac.in", subjectName: "J2EE", semester: "III", softwareName: "Apache Tomcat", installDetails: "Version 9, Lab B" },
+    { facultyName: "Dr. Kush Bhushanwar", facultyEmail: "kush@suas.ac.in", subjectName: "J2EE", semester: "III", softwareName: "MySQL Server", installDetails: "Version 8.0.46, Lab B" },
+    { facultyName: "Dr. Kush Bhushanwar", facultyEmail: "kush@suas.ac.in", subjectName: "J2EE", semester: "III", softwareName: "MySQL Connector", installDetails: "Version 9.2, Lab B" },
+    { facultyName: "Dr. Kush Bhushanwar", facultyEmail: "kush@suas.ac.in", subjectName: "J2EE", semester: "III", softwareName: "Eclipse IDE", installDetails: "Latest Compatible, Lab B" },
+    { facultyName: "Dr. Kush Bhushanwar", facultyEmail: "kush@suas.ac.in", subjectName: "J2EE", semester: "III", softwareName: "Spring Initializr", installDetails: "Latest Compatible, Lab B" },
+
+    // Dr. Praveen Goyal
+    { facultyName: "Dr. Praveen Goyal", facultyEmail: "praveen@suas.ac.in", subjectName: "Web Technologies", semester: "I, III, V", softwareName: "Visual Studio Code", installDetails: "Latest Compatible, Labs A, B, C, D, E, F, G, H" },
+    { facultyName: "Dr. Praveen Goyal", facultyEmail: "praveen@suas.ac.in", subjectName: "Python", semester: "I, III, V", softwareName: "Spyder", installDetails: "Latest Compatible, Labs A, B, C, D, E, F, G, H" },
+    { facultyName: "Dr. Praveen Goyal", facultyEmail: "praveen@suas.ac.in", subjectName: "Python", semester: "I, III, V", softwareName: "Jupyter Notebook", installDetails: "Latest Compatible, Labs A, B, C, D, E, F, G, H" },
+    { facultyName: "Dr. Praveen Goyal", facultyEmail: "praveen@suas.ac.in", subjectName: "Python", semester: "I, III, V", softwareName: "PyCharm", installDetails: "Latest Compatible, Labs A, B, C, D, E, F, G, H" },
+    { facultyName: "Dr. Praveen Goyal", facultyEmail: "praveen@suas.ac.in", subjectName: "Web Technologies", semester: "I, III, V", softwareName: "XAMPP", installDetails: "Latest Compatible, Labs A, B, C, D, E, F, G, H" },
+    { facultyName: "Dr. Praveen Goyal", facultyEmail: "praveen@suas.ac.in", subjectName: "FIS", semester: "I, III, V", softwareName: "Power BI Desktop", installDetails: "Latest Compatible, Labs A, B, C, D, E, F, G, H" },
+    { facultyName: "Dr. Praveen Goyal", facultyEmail: "praveen@suas.ac.in", subjectName: "FIS", semester: "I, III, V", softwareName: "Microsoft Excel", installDetails: "Latest Compatible, Labs A, B, C, D, E, F, G, H" },
+    { facultyName: "Dr. Praveen Goyal", facultyEmail: "praveen@suas.ac.in", subjectName: "Python", semester: "I, III, V", softwareName: "Python", installDetails: "Latest Stable, Labs A, B, C, D, E, F, G, H" },
+
+    // Mr. Lokesh Sahu
+    { facultyName: "Mr. Lokesh Sahu", facultyEmail: "lokesh@suas.ac.in", subjectName: "CPA / ADBMS", semester: "To be Assigned", softwareName: "Dev C++", installDetails: "Latest Compatible, Labs To be Assigned" },
+    { facultyName: "Mr. Lokesh Sahu", facultyEmail: "lokesh@suas.ac.in", subjectName: "ADBMS", semester: "To be Assigned", softwareName: "MySQL Server", installDetails: "Latest Compatible, Labs To be Assigned" },
+    { facultyName: "Mr. Lokesh Sahu", facultyEmail: "lokesh@suas.ac.in", subjectName: "ADBMS", semester: "To be Assigned", softwareName: "MongoDB Atlas", installDetails: "Latest Compatible, Labs To be Assigned" },
+
+    // Dr. Maya Rathore
+    { facultyName: "Dr. Maya Rathore", facultyEmail: "maya@suas.ac.in", subjectName: "OOP using Java", semester: "I, III", softwareName: "Visual Studio Code", installDetails: "Latest Compatible, Labs To be Assigned" },
+    { facultyName: "Dr. Maya Rathore", facultyEmail: "maya@suas.ac.in", subjectName: "OOP using Java", semester: "I, III", softwareName: "MySQL Connector", installDetails: "Version 9.2, Labs To be Assigned" },
+    { facultyName: "Dr. Maya Rathore", facultyEmail: "maya@suas.ac.in", subjectName: "OOP using Java", semester: "I, III", softwareName: "Java SE Development Kit", installDetails: "Version 26.0.1, Labs To be Assigned" }
+  ];
+
+  for (const req of requestsData) {
+    const sw = createdSoftware[req.softwareName];
+    if (sw) {
+      await prisma.softwareRequest.create({
+        data: {
+          facultyName: req.facultyName,
+          facultyEmail: req.facultyEmail,
+          subjectName: req.subjectName,
+          semester: req.semester,
+          softwareId: sw.id,
+          installDetails: req.installDetails,
+          status: "Pending",
+        }
+      });
+    }
+  }
+  console.log("Seeded faculty software requirements logs.");
+
   // 3. Seed default system settings
   const defaultSettings = [
     { key: "installation_status_enabled", value: "true" },
