@@ -1,0 +1,328 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum LabStatus {
+  ACTIVE
+  MAINTENANCE
+  CLOSED
+}
+
+enum SystemCondition {
+  EXCELLENT
+  WORKING
+  FAULTY
+  SCRAP
+}
+
+enum SystemStatus {
+  ONLINE
+  OFFLINE
+  UNDER_REPAIR
+  DECOMMISSIONED
+}
+
+enum MaintStatus {
+  REPORTED
+  ASSIGNED
+  DIAGNOSIS
+  WAITING_PARTS
+  REPAIRING
+  TESTING
+  RESOLVED
+  CLOSED
+}
+
+enum AssetStatus {
+  STOCK
+  AVAILABLE
+  ISSUED
+  RETURNED
+  DEPLETED
+}
+
+model User {
+  id              String      @id @default(uuid())
+  employeeId      String      @unique
+  name            String
+  email           String      @unique
+  mobile          String
+  passwordHash    String
+  pinHash         String?
+  designation     String      // Information-only: Trainer, HOD, Assistant
+  profilePhoto    String?
+  skills          String[]
+  certificates    String[]
+  experienceYears Int         @default(0)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  auditLogs       AuditLog[]
+  workLogs        DailyWorkRegister[]
+  bookingsCreated LabBooking[]
+  labStaff        LabStaff[]
+}
+
+model Lab {
+  id              String      @id @default(uuid())
+  name            String      @unique // Lab A, Lab B etc.
+  code            String      @unique // LBA, LBB
+  building        String      @default("EB")
+  floor           String
+  location        String
+  seatingCapacity Int
+  totalComputers  Int
+  operatingSystem String
+  primaryPurpose  String
+  status          LabStatus   @default(ACTIVE)
+  operatingHours  String      @default("09:00 - 17:00")
+  networkDiagram  String?     // PDF or Image url
+  switchesCount   Int         @default(2)
+  internetSpeed   String      @default("1 Gbps")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  computers       Computer[]
+  maintenanceLogs MaintenanceLog[]
+  labStaff        LabStaff[]
+  inventory       Inventory[]
+  bookings        LabBooking[]
+}
+
+model LabStaff {
+  id        String   @id @default(uuid())
+  labId     String
+  userId    String
+  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, userId])
+}
+
+model Computer {
+  id               String            @id @default(uuid())
+  computerId       String            @unique // E.g. LBA-001
+  qrCode           String?
+  barcode          String?
+  hostname         String            @unique
+  labId            String
+  benchNumber      String
+  ipAddress        String            @unique
+  macAddress       String            @unique
+  cpu              String
+  motherboard      String
+  ramGb            Int
+  ssdGb            Int
+  hddGb            Int
+  gpu              String?
+  monitorDetails   String
+  keyboardBrand    String
+  mouseBrand       String
+  upsDetails       String?
+  purchaseDate     DateTime
+  warrantyExpiry   DateTime
+  invoiceUrl       String?
+  vendorDetails    String
+  condition        SystemCondition   @default(EXCELLENT)
+  status           SystemStatus      @default(ONLINE)
+  operatingSystem  String
+  windowsKey       String?           // Encrypted
+  biosVersion      String?
+  installedDate    DateTime?
+  lastServiceDate  DateTime?
+  nextServiceDate  DateTime?
+  currentUserId    String?
+  remarks          String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  lab              Lab               @relation(fields: [labId], references: [id])
+  deployments      SoftwareDeployment[]
+  maintenanceLogs  MaintenanceLog[]
+  movementHistory  MovementHistory[]
+}
+
+model Software {
+  id               String            @id @default(uuid())
+  name             String            @unique
+  category         String            // IDE, Database, Compiler, CAD
+  latestVersion    String
+  installationFiles String?          // Server local path or download link
+  licenseDetails   String
+  licenseExpiry    DateTime?
+  licenseKeys      String?           // Encrypted
+  installationGuide String?
+  compatibility    String            // Win 11, Ubuntu 24.04
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deployments      SoftwareDeployment[]
+  requests         SoftwareRequest[]
+}
+
+model SoftwareDeployment {
+  id              String      @id @default(uuid())
+  computerId      String
+  softwareId      String
+  installedVersion String
+  installedDate   DateTime    @default(now())
+  installedBy     String
+  upgradeHistory  Json?       // Track version upgrades
+  verificationStatus String   @default("Verified")
+  computer        Computer    @relation(fields: [computerId], references: [id], onDelete: Cascade)
+  software        Software    @relation(fields: [softwareId], references: [id], onDelete: Cascade)
+
+  @@unique([computerId, softwareId])
+}
+
+model MaintenanceLog {
+  id               String      @id @default(uuid())
+  maintenanceId    String      @unique // MN-2026-0001
+  labId            String
+  computerId       String
+  pcNumber         String
+  systemMake       String
+  systemModel      String
+  serialNumber     String
+  reportedDate     DateTime    @default(now())
+  issueDescription String
+  reasonForDamage  String?
+  actionTaken      String?
+  technicianName   String
+  status           MaintStatus @default(REPORTED)
+  completionDate   DateTime?
+  billInvoiceUrl   String?
+  replacementParts Json?       // List of swapped parts
+  evidenceUrls     String[]    // Array of photo links
+  remarks          String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  lab              Lab         @relation(fields: [labId], references: [id])
+  computer         Computer    @relation(fields: [computerId], references: [id])
+}
+
+model Inventory {
+  id              String           @id @default(uuid())
+  labId           String
+  deviceType      String           // RAM, SSD, Mouse, Keyboard, RJ45
+  assetNumber     String           @unique
+  specifications  Json             // CPU details, Capacity, Brand
+  purchaseDate    DateTime
+  warrantyDetails String?
+  vendorDetails   String?
+  status          AssetStatus      @default(AVAILABLE)
+  stockCount      Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  lab              Lab              @relation(fields: [labId], references: [id])
+  lifecycleLogs   AssetLifecycle[]
+}
+
+model AssetLifecycle {
+  id               String      @id @default(uuid())
+  inventoryId      String
+  purchaseDate     DateTime
+  warrantyExpiry   DateTime
+  amcDetails       String?
+  lastMaintenance  DateTime?
+  nextMaintenance  DateTime?
+  depreciationRate Float       @default(15.0) // percentage
+  replacementRecommend String?
+  scrapApprovalUrl String?
+  disposalDate     DateTime?
+  disposalMethod   String?
+  createdAt        DateTime    @default(now())
+  inventory        Inventory   @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+}
+
+model MovementHistory {
+  id              String      @id @default(uuid())
+  computerId      String
+  fromLabName     String
+  toLabName       String
+  movedDate       DateTime    @default(now())
+  movedBy         String
+  reason          String
+  computer        Computer    @relation(fields: [computerId], references: [id], onDelete: Cascade)
+}
+
+model LabBooking {
+  id              String      @id @default(uuid())
+  labId           String
+  userId          String
+  facultyName     String
+  timeSlot        String      // "09:00 - 11:00"
+  bookingDate     DateTime
+  subjectName     String
+  semester        String
+  studentCount    Int
+  approvalStatus  String      @default("Approved")
+  createdAt       DateTime    @default(now())
+  lab             Lab         @relation(fields: [labId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id])
+}
+
+model DailyWorkRegister {
+  id              String      @id @default(uuid())
+  userId          String
+  date            DateTime    @default(now())
+  tasksPerformed  String
+  durationMinutes Int
+  labScope        String      // Lab Names worked in
+  evidenceUrl     String?
+  remarks         String?
+  createdAt       DateTime    @default(now())
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VisitorRegister {
+  id              String      @id @default(uuid())
+  visitorName     String
+  purpose         String
+  entryTime       DateTime    @default(now())
+  exitTime        DateTime?
+  approvedBy      String
+}
+
+model DocumentRepository {
+  id              String      @id @default(uuid())
+  category        String      // NAAC, NBA, ISO, Policy
+  documentName    String
+  fileUrl         String
+  associatedLabId String?
+  uploadDate      DateTime    @default(now())
+  uploadedBy      String
+  remarks         String?
+}
+
+model SoftwareRequest {
+  id              String      @id @default(uuid())
+  facultyName     String
+  facultyEmail    String
+  subjectName     String
+  semester        String
+  softwareId      String
+  installDetails  String
+  status          String      @default("Pending") // Pending, Approved, Installed, Closed
+  createdAt       DateTime    @default(now())
+  software        Software    @relation(fields: [softwareId], references: [id])
+}
+
+model AuditLog {
+  id              String      @id @default(uuid())
+  userId          String
+  actionPerformed String
+  tableName       String
+  recordId        String
+  previousValue   String?     // Text block of JSON
+  updatedValue    String?     // Text block of JSON
+  ipAddress       String
+  browserAgent    String
+  timestamp       DateTime    @default(now())
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  key   String @id
+  value String
+}
