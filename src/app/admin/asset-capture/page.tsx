@@ -15,6 +15,8 @@ import {
   deleteITAssetCapture 
 } from "../../actions";
 import { exportToExcel } from "../../../utils/exportHelper";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import Tesseract from "tesseract.js";
 
 interface Lab {
   id: string;
@@ -51,13 +53,78 @@ const EMPTY_FORM = {
   barcodeSerialNumber: "",
 };
 
+// Web Audio API success beep sound synthesizer
+const playBeep = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // 880Hz beep
+    gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.12);
+  } catch (e) {
+    console.warn("Beep audio play failure:", e);
+  }
+};
+
+// Regex label extraction helper
+const parseOCRText = (text: string) => {
+  let value = "";
+  let monitorSerial = "";
+  let cpuSerial = "";
+  let barcodeSerial = "";
+  
+  // Dell Service Tag (7 characters alnum, e.g. ABC12D3)
+  const dellMatch = text.match(/(?:service\s*tag|tag|svctag|svc\s*tag)[:\s\n]+([A-Z0-9]{7})\b/i);
+  if (dellMatch) {
+    monitorSerial = dellMatch[1].toUpperCase();
+    value = monitorSerial;
+  }
+  
+  // Serial number general pattern (e.g. S/N: 1234567890)
+  const snMatch = text.match(/(?:serial|s\/n|sn|serial\s*number)[:\s\n]+([A-Z0-9\-]{6,15})\b/i);
+  if (snMatch) {
+    const sn = snMatch[1].toUpperCase();
+    if (!value) value = sn;
+    cpuSerial = sn;
+    barcodeSerial = sn;
+  }
+  
+  // If nothing matched, look for alnum tokens of size 6-15
+  if (!value) {
+    const tokens = text.split(/[\s\n]+/);
+    for (const token of tokens) {
+      const cleanToken = token.replace(/[^A-Z0-9\-]/ig, "").toUpperCase();
+      if (cleanToken.length >= 6 && cleanToken.length <= 15) {
+        value = cleanToken;
+        break;
+      }
+    }
+  }
+  
+  return {
+    isValid: !!value,
+    value: value,
+    monitorSerial,
+    cpuSerial,
+    barcodeSerial
+  };
+};
+
 function AssetCaptureContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // Library load states
-  const [html5QrcodeReady, setHtml5QrcodeReady] = useState(false);
-  const [tesseractReady, setTesseractReady] = useState(false);
+  // OpenCV.js load state
+  const [opencvLoaded, setOpencvLoaded] = useState(false);
+  const cvRef = useRef<any>(null);
   
   // Core states
   const [captures, setCaptures] = useState<CapturedAsset[]>([]);
@@ -72,8 +139,18 @@ function AssetCaptureContent() {
   const [activeMode, setActiveMode] = useState<"QR Code" | "Barcode" | "OCR" | null>(null);
   const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [flashOn, setFlashOn] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const [successDetected, setSuccessDetected] = useState(false);
+  const [scanTimeoutMsg, setScanTimeoutMsg] = useState<string | null>(null);
+  const [ocrTip, setOcrTip] = useState<string | null>(null);
+  
+  // Zoom
+  const [cameraCapabilities, setCameraCapabilities] = useState<any>(null);
+  const [zoomVal, setZoomVal] = useState<number>(1);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   
   // OCR processing states
   const [processingOCR, setProcessingOCR] = useState(false);
@@ -102,7 +179,19 @@ function AssetCaptureContent() {
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const qrScannerRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cropCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  
+  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const tesseractWorkerRef = useRef<any>(null);
+  const activeModeRef = useRef<"QR Code" | "Barcode" | "OCR" | null>(null);
+  const processingRef = useRef(false);
+  
+  const scanIntervalRef = useRef<any>(null);
+  const scanTimerRef = useRef<any>(null);
+  const lastScanRef = useRef({ value: "", time: 0 });
+  const touchStartDistRef = useRef<number>(0);
+  const touchStartZoomRef = useRef<number>(1);
 
   const showToast = useCallback((msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -158,30 +247,26 @@ function AssetCaptureContent() {
     }
   }, [router, showToast]);
 
-  // Load CDN scripts for Scanning & OCR
+  // Load dynamic script & libraries
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Load HTML5 QR Code Scanner from CDN
-    if (!window.hasOwnProperty("Html5Qrcode")) {
-      const qrcodeScript = document.createElement("script");
-      qrcodeScript.src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
-      qrcodeScript.async = true;
-      qrcodeScript.onload = () => setHtml5QrcodeReady(true);
-      document.body.appendChild(qrcodeScript);
+    // Load OpenCV.js locally from public folder to prevent Webpack compile-time hangs
+    if (!(window as any).cv) {
+      const opencvScript = document.createElement("script");
+      opencvScript.src = "/opencv.js";
+      opencvScript.async = true;
+      opencvScript.onload = () => {
+        cvRef.current = (window as any).cv;
+        setOpencvLoaded(true);
+      };
+      opencvScript.onerror = () => {
+        console.warn("Failed to load opencv.js from local public path.");
+      };
+      document.body.appendChild(opencvScript);
     } else {
-      setHtml5QrcodeReady(true);
-    }
-
-    // Load Tesseract.js from CDN
-    if (!window.hasOwnProperty("Tesseract")) {
-      const tesseractScript = document.createElement("script");
-      tesseractScript.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-      tesseractScript.async = true;
-      tesseractScript.onload = () => setTesseractReady(true);
-      document.body.appendChild(tesseractScript);
-    } else {
-      setTesseractReady(true);
+      cvRef.current = (window as any).cv;
+      setOpencvLoaded(true);
     }
 
     fetchData();
@@ -196,267 +281,490 @@ function AssetCaptureContent() {
     const saved = localStorage.getItem("theme");
     const isDark = saved === "dark" || (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches);
     setTheme(isDark ? "dark" : "light");
+
+    return () => {
+      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+      if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (tesseractWorkerRef.current) {
+        tesseractWorkerRef.current.terminate();
+      }
+    };
   }, [fetchData, searchParams]);
 
-  // Handle camera switch (Front/Back)
-  const switchCamera = () => {
-    setFacingMode(prev => (prev === "user" ? "environment" : "user"));
+  // Query camera devices
+  const initCameraDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === "videoinput");
+      setCameraDevices(videoDevices);
+      if (videoDevices.length > 0) {
+        const rearCamera = videoDevices.find(
+          d => d.label.toLowerCase().includes("back") || 
+               d.label.toLowerCase().includes("rear") || 
+               d.label.toLowerCase().includes("environment")
+        );
+        const defaultDevice = rearCamera || videoDevices[0];
+        setSelectedDeviceId(defaultDevice.deviceId);
+        return defaultDevice.deviceId;
+      }
+    } catch (e) {
+      console.error("Enumerate devices failed:", e);
+    }
+    return "";
   };
 
-  // Close active camera streams
+  // Start Camera Stream & Decoders
+  const startCamera = async (mode: "QR Code" | "Barcode" | "OCR", targetDeviceId?: string) => {
+    setCameraError(null);
+    setScanTimeoutMsg(null);
+    setOcrTip(null);
+    setSuccessDetected(false);
+    setScanning(true);
+    setActiveMode(mode);
+    activeModeRef.current = mode;
+
+    try {
+      let deviceId = targetDeviceId || selectedDeviceId;
+      if (!deviceId) {
+        deviceId = await initCameraDevices();
+      }
+
+      const constraints: MediaStreamConstraints = {
+        video: deviceId 
+          ? { deviceId: { exact: deviceId } } 
+          : { facingMode: facingMode }
+      };
+
+      // Request 1080p 16:9 aspect ratio
+      const videoConstraints = constraints.video as MediaTrackConstraints;
+      videoConstraints.width = { ideal: 1920, max: 1920 };
+      videoConstraints.height = { ideal: 1080, max: 1080 };
+      videoConstraints.aspectRatio = { ideal: 1.7777777778 };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      mediaStreamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        const cap = track.getCapabilities() as any;
+        setCameraCapabilities(cap);
+        setTorchSupported(!!cap.torch);
+
+        const settings = track.getSettings() as any;
+        if (settings.zoom) {
+          setZoomVal(settings.zoom);
+        }
+
+        // Apply continuous focus, auto exposure & image stabilization
+        const advanced: any = {};
+        if (cap.focusMode && cap.focusMode.includes("continuous")) {
+          advanced.focusMode = "continuous";
+        }
+        if (cap.exposureMode && cap.exposureMode.includes("continuous")) {
+          advanced.exposureMode = "continuous";
+        }
+        if (cap.whiteBalanceMode && cap.whiteBalanceMode.includes("continuous")) {
+          advanced.whiteBalanceMode = "continuous";
+        }
+        if (cap.imageStabilization) {
+          advanced.imageStabilization = true;
+        }
+        if (Object.keys(advanced).length > 0) {
+          await track.applyConstraints({ advanced: [advanced] } as any).catch(err => console.warn(err));
+        }
+      }
+
+      // Warm up Multi-format Readers & Tesseract persistent worker
+      if (!zxingReaderRef.current) {
+        zxingReaderRef.current = new BrowserMultiFormatReader();
+      }
+
+      if (mode === "OCR" && !tesseractWorkerRef.current) {
+        setOcrTip("Warming up OCR engine...");
+        const worker = await Tesseract.createWorker("eng");
+        tesseractWorkerRef.current = worker;
+        setOcrTip("OCR engine ready");
+      }
+
+      // Run scanning frame capture loop every 200ms
+      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = setInterval(() => {
+        runDetectionLoop();
+      }, 200);
+
+      // Trigger timeout alert after 7 seconds if nothing is captured
+      if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+      scanTimerRef.current = setTimeout(() => {
+        setScanTimeoutMsg("No QR Code, Barcode, or Text detected. Please move closer or improve lighting.");
+      }, 7000);
+
+    } catch (err: any) {
+      console.error(err);
+      setCameraError(err?.message || "Failed to access camera device. Check permissions.");
+      setScanning(false);
+    }
+  };
+
+  // Close camera streaming tracks
   const stopCamera = useCallback(() => {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(track => track.stop());
       mediaStreamRef.current = null;
     }
-    if (qrScannerRef.current) {
-      try {
-        qrScannerRef.current.clear();
-      } catch (err) {
-        console.error("QR scanner stop error:", err);
-      }
-      qrScannerRef.current = null;
-    }
+    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
     setScanning(false);
-    setFlashOn(false);
+    setTorchOn(false);
   }, []);
 
-  // Flash Toggle
-  const toggleFlash = async () => {
+  // Flash / Torch toggle
+  const toggleTorch = async () => {
     if (!mediaStreamRef.current) return;
     const track = mediaStreamRef.current.getVideoTracks()[0];
-    if (track) {
+    if (track && torchSupported) {
       try {
-        const capabilities: any = track.getCapabilities();
-        if (capabilities.torch) {
-          const nextFlashState = !flashOn;
-          await track.applyConstraints({
-            advanced: [{ torch: nextFlashState } as any]
-          });
-          setFlashOn(nextFlashState);
-        } else {
-          showToast("Flash is not supported on this device/camera track.", "error");
-        }
+        const nextTorch = !torchOn;
+        await track.applyConstraints({ advanced: [{ torch: nextTorch }] } as any);
+        setTorchOn(nextTorch);
       } catch (err) {
-        console.error("Error toggling flash:", err);
+        console.error("Flash toggle error:", err);
       }
     }
   };
 
-  // Trigger HTML5 QR / Barcode Scanner initialization
-  const startScanner = useCallback(async (mode: "QR Code" | "Barcode") => {
-    setCameraError(null);
-    setScanning(true);
-    
-    // Give DOM element a millisecond to mount
-    setTimeout(async () => {
-      const elementId = "camera-scanner-reader";
-      const readerDom = document.getElementById(elementId);
-      if (!readerDom) {
-        setCameraError("Camera overlay reader mount failed.");
-        setScanning(false);
+  // Switch camera devices
+  const handleSwitchCamera = async () => {
+    if (cameraDevices.length <= 1) return;
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    const currentIndex = cameraDevices.findIndex(d => d.deviceId === selectedDeviceId);
+    const nextIndex = (currentIndex + 1) % cameraDevices.length;
+    const nextDevice = cameraDevices[nextIndex];
+    setSelectedDeviceId(nextDevice.deviceId);
+
+    if (scanning && activeMode) {
+      await startCamera(activeMode, nextDevice.deviceId);
+    }
+  };
+
+  // Pinch / Slider Zoom control
+  const handleZoomChange = async (val: number) => {
+    const track = mediaStreamRef.current?.getVideoTracks()[0];
+    if (track && cameraCapabilities?.zoom) {
+      try {
+        await track.applyConstraints({ advanced: [{ zoom: val }] } as any);
+        setZoomVal(val);
+      } catch (err) {
+        console.warn("Failed to apply zoom constraints:", err);
+      }
+    }
+  };
+
+  // Touch screen zoom gestures
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const distance = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      touchStartDistRef.current = distance;
+      
+      const track = mediaStreamRef.current?.getVideoTracks()[0];
+      if (track) {
+        const settings = track.getSettings() as any;
+        touchStartZoomRef.current = settings.zoom || 1;
+      }
+    }
+  };
+
+  const handleTouchMove = async (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartDistRef.current > 0) {
+      const distance = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const scale = distance / touchStartDistRef.current;
+      const track = mediaStreamRef.current?.getVideoTracks()[0];
+      if (track && cameraCapabilities?.zoom) {
+        const min = cameraCapabilities.zoom.min || 1;
+        const max = cameraCapabilities.zoom.max || 4;
+        const targetZoom = Math.max(min, Math.min(max, touchStartZoomRef.current * scale));
+        try {
+          await track.applyConstraints({ advanced: [{ zoom: targetZoom }] } as any);
+          setZoomVal(targetZoom);
+        } catch (err) {
+          console.warn("Failed to apply touch zoom constraints:", err);
+        }
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartDistRef.current = 0;
+  };
+
+  // Optimized pipeline frame parser
+  const runDetectionLoop = async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+
+    try {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2) {
+        processingRef.current = false;
         return;
       }
 
-      try {
-        const Html5Qrcode = (window as any).Html5Qrcode;
-        const Html5QrcodeSupportedFormats = (window as any).Html5QrcodeSupportedFormats;
+      let canvas = canvasRef.current;
+      if (!canvas) {
+        canvas = document.createElement("canvas");
+        canvasRef.current = canvas;
+      }
 
-        if (!Html5Qrcode) {
-          setCameraError("Scanner library has not loaded yet. Check network.");
-          setScanning(false);
+      let cropCanvas = cropCanvasRef.current;
+      if (!cropCanvas) {
+        cropCanvas = document.createElement("canvas");
+        cropCanvasRef.current = cropCanvas;
+      }
+
+      const ctx = canvas.getContext("2d");
+      const cropCtx = cropCanvas.getContext("2d");
+      if (!ctx || !cropCtx) {
+        processingRef.current = false;
+        return;
+      }
+
+      const videoW = video.videoWidth || 640;
+      const videoH = video.videoHeight || 480;
+      canvas.width = videoW;
+      canvas.height = videoH;
+      ctx.drawImage(video, 0, 0, videoW, videoH);
+
+      // Crop guideline scanner frame bounds (centered 80% screen width target area)
+      const cropW = Math.round(videoW * 0.8);
+      const cropH = activeModeRef.current === "Barcode" ? Math.round(cropW * 0.35) : Math.round(cropW * 0.8);
+      const cropX = Math.round((videoW - cropW) / 2);
+      const cropY = Math.round((videoH - cropH) / 2);
+
+      cropCanvas.width = cropW;
+      cropCanvas.height = cropH;
+      cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+      let detectedResult: any = null;
+      const currentMode = activeModeRef.current;
+
+      // Pipeline evaluation:
+      if (currentMode === "QR Code") {
+        detectedResult = await detectQRAndBarcode(cropCanvas, true);
+      } else if (currentMode === "Barcode") {
+        detectedResult = await detectQRAndBarcode(cropCanvas, false);
+      } else if (currentMode === "OCR") {
+        detectedResult = await runOCRDetection(cropCanvas);
+      }
+
+      if (detectedResult) {
+        // Suppress duplicate reads within 5 seconds
+        const now = Date.now();
+        if (lastScanRef.current.value === detectedResult.value && now - lastScanRef.current.time < 5000) {
+          processingRef.current = false;
           return;
         }
 
-        // Configure supported formats based on choice
-        const formats = mode === "QR Code" 
-          ? [Html5QrcodeSupportedFormats.QR_CODE] 
-          : [
-              Html5QrcodeSupportedFormats.CODE_39,
-              Html5QrcodeSupportedFormats.CODE_128,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.UPC_E,
-              Html5QrcodeSupportedFormats.ITF,
-              Html5QrcodeSupportedFormats.PDF_417,
-              Html5QrcodeSupportedFormats.DATA_MATRIX
-            ];
+        lastScanRef.current = { value: detectedResult.value, time: now };
 
-        const qrScanner = new Html5Qrcode(elementId);
-        qrScannerRef.current = qrScanner;
-
-        const config = {
-          fps: 15,
-          qrbox: (width: number, height: number) => {
-            const size = Math.min(width, height) * 0.75;
-            return { width: size, height: mode === "Barcode" ? size * 0.4 : size };
-          },
-          formats: formats,
-        };
-
-        const successCallback = (decodedText: string) => {
-          stopCamera();
-          
-          // Determine pre-filled values
-          const prefill = { ...EMPTY_FORM, scanType: mode, scannedValue: decodedText };
-          const queryLab = searchParams.get("lab");
-          if (queryLab) prefill.location = decodeURIComponent(queryLab);
-          
-          if (mode === "Barcode") {
-            prefill.barcodeSerialNumber = decodedText;
-            prefill.cpuSerialNumber = decodedText; // CPU has Barcode
-          } else {
-            prefill.monitorSerialNumber = decodedText; // Monitor has QR
-          }
-          
-          setForm(prefill);
-          setEditingId(null);
-          setCapturedImage(null);
-          setShowReviewModal(true);
-          showToast(`${mode} detected successfully!`);
-        };
-
-        await qrScanner.start(
-          { facingMode: facingMode },
-          config,
-          successCallback,
-          (errorMessage: string) => {
-            // Quiet debug errors
-          }
-        );
-
-        // Access native mediaStream track to allow flashlight controls
-        const localVideoElement = readerDom.getElementsByTagName("video")[0];
-        if (localVideoElement && localVideoElement.srcObject) {
-          mediaStreamRef.current = localVideoElement.srcObject as MediaStream;
+        // Feedback sound and haptics
+        playBeep();
+        if (navigator.vibrate) {
+          navigator.vibrate(80);
         }
 
-      } catch (err: any) {
-        console.error(err);
-        setCameraError(err?.message || "Camera permission is required.");
-        setScanning(false);
-      }
-    }, 100);
-  }, [facingMode, searchParams, showToast, stopCamera]);
+        setSuccessDetected(true);
+        if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+        if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
 
-  // OCR Snapshot capturing
-  const startOCRScan = async () => {
-    setCameraError(null);
-    setScanning(true);
+        stopCamera();
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      
-      mediaStreamRef.current = stream;
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (err: any) {
-      console.error(err);
-      setCameraError("Camera permission is required.");
-      setScanning(false);
-    }
-  };
+        const prefill = {
+          ...EMPTY_FORM,
+          scanType: detectedResult.type,
+          scannedValue: detectedResult.value,
+          ocrText: detectedResult.ocrText || "",
+          remarks: detectedResult.confidence ? `OCR Confidence: ${detectedResult.confidence}%` : ""
+        };
 
-  // Perform Snapshot image OCR capture
-  const captureSnapshotOCR = async () => {
-    if (!videoRef.current || !mediaStreamRef.current) return;
-    
-    setProcessingOCR(true);
-    try {
-      const video = videoRef.current;
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
-      
-      const dataUrl = canvas.toDataURL("image/jpeg");
-      setCapturedImage(dataUrl);
-      stopCamera();
+        if (detectedResult.type === "Barcode") {
+          prefill.barcodeSerialNumber = detectedResult.value;
+          prefill.cpuSerialNumber = detectedResult.value;
+        } else if (detectedResult.type === "QR Code") {
+          prefill.monitorSerialNumber = detectedResult.value;
+        } else if (detectedResult.type === "OCR") {
+          prefill.monitorSerialNumber = detectedResult.parsedFields.monitorSerial || "";
+          prefill.cpuSerialNumber = detectedResult.parsedFields.cpuSerial || "";
+          prefill.barcodeSerialNumber = detectedResult.parsedFields.barcodeSerial || "";
+          prefill.scannedValue = detectedResult.parsedFields.value || detectedResult.value;
+        }
 
-      const Tesseract = (window as any).Tesseract;
-      if (!Tesseract) {
-        showToast("Tesseract OCR script failed to load. Check internet connection.", "error");
-        setProcessingOCR(false);
-        return;
+        const queryLab = searchParams.get("lab");
+        if (queryLab) prefill.location = decodeURIComponent(queryLab);
+
+        setTimeout(() => {
+          setForm(prefill);
+          setEditingId(null);
+          setCapturedImage(detectedResult.image || null);
+          setShowReviewModal(true);
+          setSuccessDetected(false);
+        }, 800);
       }
 
-      // OCR Image Text Recognition
-      const result = await Tesseract.recognize(dataUrl, 'eng');
-      const text = result?.data?.text || "";
-
-      if (!text.trim()) {
-        showToast("Unable to recognize text. Please try again.", "error");
-        setProcessingOCR(false);
-        return;
-      }
-
-      // Extract serial numbers or text using patterns (Dell Service tags are 7 char alnum)
-      let serviceTag = "";
-      let serialNumber = "";
-      
-      // Look for Dell Service Tag patterns: alnum of length 7
-      const serviceTagMatch = text.match(/(?:service\s*tag|tag|svctag|svc\s*tag)[:\s]+([a-z0-9]{7})/i);
-      if (serviceTagMatch) {
-        serviceTag = serviceTagMatch[1].toUpperCase();
-      }
-
-      // Look for Serial Number patterns
-      const serialMatch = text.match(/(?:serial|s\/n|sn|serial\s*number)[:\s]+([a-z0-9\-]{6,15})/i);
-      if (serialMatch) {
-        serialNumber = serialMatch[1].toUpperCase();
-      }
-
-      // Pre-fill fields
-      const ocrPrefill = {
-        ...EMPTY_FORM,
-        scanType: "OCR",
-        scannedValue: serviceTag || serialNumber || text.slice(0, 50),
-        ocrText: text,
-        imagePath: dataUrl,
-        monitorSerialNumber: serviceTag || serialNumber || "",
-        cpuSerialNumber: serviceTag || serialNumber || "",
-        barcodeSerialNumber: ""
-      };
-
-      const queryLab = searchParams.get("lab");
-      if (queryLab) ocrPrefill.location = decodeURIComponent(queryLab);
-
-      setForm(ocrPrefill);
-      setEditingId(null);
-      setShowReviewModal(true);
-      showToast("OCR Text Processed successfully!");
-    } catch (e: any) {
-      console.error(e);
-      showToast("Unable to recognize text. Please try again.", "error");
+    } catch (e) {
+      console.error("Frame loop detection error:", e);
     } finally {
-      setProcessingOCR(false);
+      processingRef.current = false;
     }
   };
 
-  // Trigger camera scanning start on choosing a mode
+  // ZXing & Native scanner
+  const detectQRAndBarcode = async (canvas: HTMLCanvasElement, qrOnly: boolean): Promise<any> => {
+    // 1. Native BarcodeDetector API Check
+    if (typeof window !== "undefined" && (window as any).BarcodeDetector) {
+      try {
+        const formats = qrOnly 
+          ? ["qr_code"] 
+          : ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "itf", "pdf417", "data_matrix"];
+        const detector = new (window as any).BarcodeDetector({ formats });
+        const barcodes = await detector.detect(canvas);
+        if (barcodes.length > 0) {
+          const b = barcodes[0];
+          return {
+            type: b.format === "qr_code" ? "QR Code" : "Barcode",
+            value: b.rawValue,
+            image: canvas.toDataURL("image/jpeg")
+          };
+        }
+      } catch (err) {
+        console.warn("Native BarcodeDetector error:", err);
+      }
+    }
+
+    // 2. ZXing Fallback Reader Check
+    try {
+      const zxing = zxingReaderRef.current;
+      if (zxing) {
+        const decodeResult = await zxing.decodeFromCanvas(canvas);
+        if (decodeResult) {
+          const text = decodeResult.getText();
+          const format = decodeResult.getBarcodeFormat();
+          const isQr = format === 11 || String(format).includes("QR");
+
+          if (qrOnly && !isQr) return null;
+          if (!qrOnly && isQr) return null;
+
+          return {
+            type: isQr ? "QR Code" : "Barcode",
+            value: text,
+            image: canvas.toDataURL("image/jpeg")
+          };
+        }
+      }
+    } catch (e) {
+      // ignore decoders failures
+    }
+
+    return null;
+  };
+
+  // OpenCV + Tesseract OCR
+  const runOCRDetection = async (canvas: HTMLCanvasElement): Promise<any> => {
+    if (cvRef.current) {
+      try {
+        const cv = cvRef.current;
+        let src = cv.imread(canvas);
+        let dst = new cv.Mat();
+
+        // 1. Convert to grayscale
+        cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
+
+        // 2. Boost Contrast (alpha: 1.6, beta: 10)
+        dst.convertTo(dst, -1, 1.6, 10);
+
+        // 3. Edge Sharpening Kernel
+        let kernel = cv.matFromArray(3, 3, cv.CV_32F, [
+           0, -1,  0,
+          -1,  5, -1,
+           0, -1,  0
+        ]);
+        cv.filter2D(dst, dst, -1, kernel);
+
+        // 4. Adaptive Thresholding
+        cv.adaptiveThreshold(dst, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2);
+
+        // Visual write back to canvas
+        cv.imshow(canvas, dst);
+
+        // Cleanup
+        src.delete();
+        dst.delete();
+        kernel.delete();
+      } catch (err) {
+        console.warn("OpenCV matrix processing failed:", err);
+      }
+    }
+
+    const worker = tesseractWorkerRef.current;
+    if (!worker) return null;
+
+    try {
+      setOcrTip("Processing OCR...");
+      const ocrRes = await worker.recognize(canvas);
+      const text = ocrRes?.data?.text || "";
+      const confidence = ocrRes?.data?.confidence || 0;
+
+      if (text.trim()) {
+        if (confidence >= 70) {
+          const parsed = parseOCRText(text);
+          if (parsed.isValid) {
+            setOcrTip(null);
+            return {
+              type: "OCR",
+              value: parsed.value,
+              ocrText: text,
+              confidence: confidence,
+              parsedFields: parsed,
+              image: canvas.toDataURL("image/jpeg")
+            };
+          }
+        } else {
+          setOcrTip("Text is unclear. Hold the camera steady or move closer.");
+        }
+      }
+    } catch (e) {
+      console.warn("Tesseract OCR exception:", e);
+    }
+
+    return null;
+  };
+
   const launchCamera = (mode: "QR Code" | "Barcode" | "OCR") => {
-    setActiveMode(mode);
-    if (mode === "OCR") {
-      startOCRScan();
-    } else {
-      startScanner(mode);
-    }
+    startCamera(mode);
   };
 
-  // Close scanning overlay
   const cancelScanning = () => {
     stopCamera();
     setActiveMode(null);
     setCameraError(null);
+    setScanTimeoutMsg(null);
+    setOcrTip(null);
   };
 
   // Save reviewed capture data to Postgres
@@ -743,24 +1051,32 @@ function AssetCaptureContent() {
 
         {/* 4. Active Camera scanning screen overlay */}
         {scanning && (
-          <div className="bg-zinc-900 border border-zinc-800/60 rounded-3xl p-6 shadow-2xl flex flex-col items-center max-w-3xl mx-auto no-print">
-            <div className="w-full flex items-center justify-between pb-3 border-b border-zinc-800 mb-4">
-              <div>
-                <span className="text-[10px] text-rose-500 font-extrabold uppercase tracking-widest">Active Scan Mode</span>
-                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wide">{activeMode} Scanning</h3>
-              </div>
-              <button 
-                onClick={cancelScanning} 
-                className="p-1.5 rounded-lg hover:bg-zinc-800 border border-zinc-800 text-zinc-400 transition"
-              >
-                <X size={15} />
-              </button>
-            </div>
+          <div 
+            className="fixed inset-0 bg-black/95 z-50 flex flex-col justify-between overflow-hidden text-white select-none"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            {/* Embedded styles for laser line and box-shadow backdrop */}
+            <style>{`
+              @keyframes scan-laser {
+                0% { top: 4%; }
+                50% { top: 96%; }
+                100% { top: 4%; }
+              }
+              .animate-scan-laser {
+                position: absolute;
+                animation: scan-laser 2.5s infinite linear;
+              }
+              .scanner-shading {
+                box-shadow: 0 0 0 9999px rgba(9, 9, 11, 0.7);
+              }
+            `}</style>
 
-            {/* Error logs */}
+            {/* Error / Error state block */}
             {cameraError && (
-              <div className="w-full p-4 mb-4 bg-red-950/20 border border-red-800 rounded-xl flex items-start gap-2.5 text-xs text-red-300 text-left">
-                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <div className="absolute top-20 left-4 right-4 z-50 p-4 bg-red-950/80 border border-red-800 rounded-2xl flex items-start gap-2.5 text-xs text-red-300 shadow-2xl">
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                 <div>
                   <p className="font-bold">Camera Initialization Failure</p>
                   <p className="mt-0.5">{cameraError}</p>
@@ -768,69 +1084,143 @@ function AssetCaptureContent() {
               </div>
             )}
 
-            {/* Scanning window Container */}
-            <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden relative border border-zinc-855 flex items-center justify-center">
-              {activeMode === "OCR" ? (
-                <video 
-                  ref={videoRef} 
-                  autoPlay 
-                  playsInline 
-                  className="w-full h-full object-cover scale-x-[-1]"
-                />
-              ) : (
-                <div id="camera-scanner-reader" className="w-full h-full object-cover" />
-              )}
-
-              {/* Overlay guidelines box */}
-              <div className="absolute inset-0 pointer-events-none flex items-center justify-center flex-col">
-                <div className={`border-2 border-rose-500/50 rounded-xl relative ${
-                  activeMode === "Barcode" ? "w-[80%] h-[35%]" : "w-[60%] aspect-square"
-                }`}>
-                  <div className="absolute inset-0 animate-pulse bg-rose-500/5" />
-                  {/* Glowing scan line animation */}
-                  <div className="absolute left-0 right-0 h-0.5 bg-rose-500 top-1/2 shadow-[0_0_15px_rgba(239,68,68,0.8)] animate-bounce" />
-                </div>
-                <span className="text-[10px] bg-black/60 px-2 py-0.5 rounded-full text-zinc-400 mt-3 font-semibold">
-                  {activeMode === "OCR" ? "Align printed labels inside guideline box & click Snapshot" : "Align barcode/QR code inside scanner guides"}
+            {/* Top Control strip */}
+            <div className="w-full flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent z-10">
+              <div>
+                <span className="text-[10px] text-emerald-400 font-extrabold uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Scanning...
                 </span>
+                <h3 className="font-bold text-sm text-zinc-100 uppercase tracking-wide">{activeMode} Scan</h3>
+              </div>
+              <button 
+                onClick={cancelScanning} 
+                className="p-2.5 rounded-full bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Full-Screen video preview */}
+            <div className="absolute inset-0 w-full h-full z-0 flex items-center justify-center bg-black">
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                muted
+                className={`w-full h-full object-cover ${facingMode === "user" ? "scale-x-[-1]" : "scale-x-[1]"}`}
+              />
+              
+              {/* Overlay guidelines box centered */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                
+                {/* Scanner Instructions */}
+                <div className="text-center px-4 mb-4 z-10">
+                  <p className="text-xs text-zinc-200 font-semibold bg-black/60 px-3.5 py-2 rounded-full backdrop-blur-xs max-w-sm">
+                    Align the QR Code, Barcode, or Asset Label inside the frame.
+                  </p>
+                </div>
+
+                {/* Target Frame Area */}
+                <div 
+                  id="ocr-scan-guide"
+                  className={`relative rounded-2xl border-2 transition-all duration-300 scanner-shading ${
+                    successDetected ? "border-emerald-500 scale-105" : "border-zinc-400/80"
+                  } ${
+                    activeMode === "Barcode" ? "w-[85vw] h-[30vh] max-w-[500px]" : "w-[80vw] h-[80vw] max-w-[340px] max-h-[340px]"
+                  }`}
+                >
+                  {/* Outer Corner Guide brackets */}
+                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-500 rounded-tl-lg -mt-1 -ml-1" />
+                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-emerald-500 rounded-tr-lg -mt-1 -mr-1" />
+                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-emerald-500 rounded-bl-lg -mt-1 -ml-1" />
+                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-emerald-500 rounded-br-lg -mt-1 -mr-1" />
+
+                  {/* Animated laser line */}
+                  {!successDetected && (
+                    <div className="absolute left-1.5 right-1.5 h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_rgba(52,211,153,0.85)] animate-scan-laser" />
+                  )}
+
+                  {/* Success animations overlay */}
+                  {successDetected && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/40 backdrop-blur-xs rounded-2xl animate-scale-in">
+                      <CheckCircle className="text-emerald-400 animate-bounce mb-2" size={54} />
+                      <span className="text-xs text-emerald-400 font-bold uppercase tracking-wider">
+                        {activeMode === "QR Code" ? "QR Code Detected" : activeMode === "Barcode" ? "Barcode Detected" : "Text Detected"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Toast / Help Tip overlay messages */}
+                {(ocrTip || scanTimeoutMsg) && (
+                  <div className="text-center px-6 mt-6 z-10 max-w-sm">
+                    <p className="text-xs bg-rose-950/80 border border-rose-800 text-rose-300 py-2 px-4 rounded-xl shadow-lg font-medium animate-pulse">
+                      {ocrTip || scanTimeoutMsg}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Scanner controls action strip */}
-            <div className="w-full flex justify-between items-center gap-3 mt-5">
-              <button 
-                onClick={cancelScanning} 
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-300 rounded-xl transition"
-              >
-                Cancel
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={toggleFlash} 
-                  className="px-3.5 py-2 bg-zinc-950 hover:bg-zinc-800 text-xs font-bold rounded-xl border border-zinc-850 text-zinc-400 flex items-center gap-1.5"
-                >
-                  Flash {flashOn ? "Off" : "On"}
-                </button>
-                <button 
-                  onClick={switchCamera} 
-                  className="px-3.5 py-2 bg-zinc-950 hover:bg-zinc-800 text-xs font-bold rounded-xl border border-zinc-855 text-zinc-400 flex items-center gap-1.5"
-                >
-                  Switch Camera
-                </button>
-              </div>
-
-              {activeMode === "OCR" ? (
-                <button 
-                  onClick={captureSnapshotOCR} 
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-extrabold text-xs uppercase tracking-wider rounded-xl transition flex items-center gap-1.5 shadow-md"
-                >
-                  <Camera size={14} />
-                  Capture Snapshot
-                </button>
-              ) : (
-                <div className="w-[100px]" /> // spacer
+            {/* Bottom Actions strip */}
+            <div className="w-full bg-gradient-to-t from-black/90 via-black/60 to-transparent p-6 z-10 flex flex-col gap-4">
+              {/* Zoom control slider if zoom is active */}
+              {cameraCapabilities?.zoom && (
+                <div className="w-full flex items-center justify-center gap-3 px-4 bg-black/40 py-1.5 rounded-full max-w-md mx-auto">
+                  <span className="text-[10px] text-zinc-400 font-bold">1x</span>
+                  <input 
+                    type="range"
+                    min={cameraCapabilities.zoom.min || 1}
+                    max={cameraCapabilities.zoom.max || 4}
+                    step="0.1"
+                    value={zoomVal}
+                    onChange={e => handleZoomChange(parseFloat(e.target.value))}
+                    className="flex-1 accent-emerald-400 h-1 rounded-lg bg-zinc-800 outline-none cursor-pointer"
+                  />
+                  <span className="text-[10px] text-zinc-400 font-bold">{zoomVal.toFixed(1)}x</span>
+                </div>
               )}
+
+              {/* Camera configuration button controls */}
+              <div className="flex items-center justify-center gap-6">
+                {/* Flash/Torch Switcher */}
+                {torchSupported && (
+                  <button 
+                    onClick={toggleTorch} 
+                    className={`p-3.5 rounded-full transition ${
+                      torchOn ? "bg-amber-500 text-zinc-950" : "bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300"
+                    } border border-zinc-800`}
+                    title="Toggle Flash"
+                  >
+                    <Sun size={20} />
+                  </button>
+                )}
+                
+                {/* Manual capture trigger for OCR */}
+                {activeMode === "OCR" && (
+                  <button 
+                    onClick={() => {
+                      runDetectionLoop();
+                    }} 
+                    className="p-5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-lg transform active:scale-95 transition"
+                    title="Capture OCR Frame"
+                  >
+                    <Camera size={26} />
+                  </button>
+                )}
+
+                {/* Switch Camera Button */}
+                {cameraDevices.length > 1 && (
+                  <button 
+                    onClick={handleSwitchCamera} 
+                    className="p-3.5 rounded-full bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 transition"
+                    title="Switch Camera"
+                  >
+                    <RefreshCw size={20} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
