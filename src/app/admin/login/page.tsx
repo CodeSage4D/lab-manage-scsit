@@ -78,12 +78,12 @@ export default function AdminLogin() {
 
     try {
       if (loginMethod === "password") {
-        const res = await verifyAdminLogin(adminId, password);
+        const res = await verifyAdminLogin(adminId.trim(), password);
         if (res.success && res.data) {
           const found = res.data;
           
           // Save last logged in ID for quick PIN login later
-          localStorage.setItem("last_admin_id", found.id);
+          localStorage.setItem("last_admin_id", found.employeeId);
 
           // If PIN is not set, block dashboard routing and trigger PIN setup modal
           if (!found.isPinSet) {
@@ -101,7 +101,7 @@ export default function AdminLogin() {
         }
       } else {
         // PIN login
-        const res = await verifyAdminPINLogin(adminId, pin);
+        const res = await verifyAdminPINLogin(adminId.trim(), pin);
         if (res.success && res.data) {
           completeSession(res.data);
         } else {

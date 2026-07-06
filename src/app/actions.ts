@@ -41,7 +41,12 @@ function hashValue(val: string): string {
 export async function verifyAdminLogin(employeeIdOrEmail: string, passwordPlain: string): Promise<ServiceResult> {
   try {
     const user = await prisma.user.findFirst({
-      where: { OR: [{ employeeId: employeeIdOrEmail }, { email: employeeIdOrEmail }] },
+      where: {
+        OR: [
+          { employeeId: { equals: employeeIdOrEmail, mode: "insensitive" } },
+          { email: { equals: employeeIdOrEmail, mode: "insensitive" } }
+        ]
+      },
     });
     if (!user) return { success: false, error: "User not found." };
     if (user.passwordHash !== hashValue(passwordPlain)) return { success: false, error: "Invalid password." };
@@ -83,9 +88,16 @@ export async function verifyAdminLogin(employeeIdOrEmail: string, passwordPlain:
   }
 }
 
-export async function verifyAdminPINLogin(employeeId: string, pinPlain: string): Promise<ServiceResult> {
+export async function verifyAdminPINLogin(employeeIdOrId: string, pinPlain: string): Promise<ServiceResult> {
   try {
-    const user = await prisma.user.findUnique({ where: { employeeId } });
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { employeeId: { equals: employeeIdOrId, mode: "insensitive" } },
+          { id: { equals: employeeIdOrId, mode: "insensitive" } }
+        ]
+      }
+    });
     if (!user || !user.pinHash) return { success: false, error: "User or PIN not found." };
     if (user.pinHash !== hashValue(pinPlain)) return { success: false, error: "Invalid PIN." };
 

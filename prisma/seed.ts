@@ -148,16 +148,6 @@ async function main() {
       pinHash: hashValue("2026"),
     },
     {
-      employeeId: "mrityunjay.sir",
-      name: "Mrityunjay Sir",
-      email: "mrityunjay@suas.ac.in",
-      mobile: "9999999904",
-      designation: "Trainer of Practice",
-      passwordHash: hashValue("@dn1m@26"),
-      pinHash: hashValue("2026"),
-      assignedCodes: ["LBA"],
-    },
-    {
       employeeId: "prashant.sir",
       name: "Prashant Sir",
       email: "prashant@suas.ac.in",
