@@ -1547,3 +1547,98 @@ export async function importComputers(computersList: any[], authorId?: any): Pro
     return { success: false, error: e.message || "Bulk import failed." };
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   16. IT ASSET CAPTURE
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+export async function getITAssetCaptures(): Promise<ServiceResult> {
+  try {
+    const list = await prisma.iTAssetCapture.findMany({
+      orderBy: { createdDate: "desc" },
+    });
+    return { success: true, data: list };
+  } catch (e: any) {
+    console.error("getITAssetCaptures error:", e);
+    return { success: false, error: "Failed to fetch captured assets." };
+  }
+}
+
+export async function saveITAssetCapture(data: any, authorId?: string): Promise<ServiceResult> {
+  try {
+    const safeAuthorId = String(authorId || "system");
+    const { id, ...payload } = data;
+    const captureData = {
+      scanType: payload.scanType,
+      scannedValue: payload.scannedValue || null,
+      ocrText: payload.ocrText || null,
+      imagePath: payload.imagePath || null,
+      createdBy: payload.createdBy || safeAuthorId,
+      location: payload.location,
+      remarks: payload.remarks || null,
+      status: payload.status || "Captured",
+      cpuSerialNumber: payload.cpuSerialNumber || null,
+      monitorSerialNumber: payload.monitorSerialNumber || null,
+      barcodeSerialNumber: payload.barcodeSerialNumber || null,
+    };
+
+    let result;
+    if (id) {
+      result = await prisma.iTAssetCapture.update({
+        where: { id },
+        data: captureData,
+      });
+    } else {
+      result = await prisma.iTAssetCapture.create({
+        data: captureData,
+      });
+    }
+
+    // Add Audit Log
+    await prisma.auditLog.create({
+      data: {
+        userId: safeAuthorId,
+        actionPerformed: `${id ? "Updated" : "Saved"} IT asset capture record (${captureData.scanType})`,
+        tableName: "ITAssetCapture",
+        recordId: result.id,
+        updatedValue: JSON.stringify(captureData),
+        ipAddress: "127.0.0.1",
+        browserAgent: "Server Action Engine",
+      },
+    });
+
+    revalidatePath("/admin/asset-capture");
+    return { success: true, data: result };
+  } catch (e: any) {
+    console.error("saveITAssetCapture error:", e);
+    return { success: false, error: e.message || "Failed to save asset capture record." };
+  }
+}
+
+export async function deleteITAssetCapture(id: string, authorId?: string): Promise<ServiceResult> {
+  try {
+    const safeAuthorId = String(authorId || "system");
+    const record = await prisma.iTAssetCapture.delete({
+      where: { id },
+    });
+
+    // Add Audit Log
+    await prisma.auditLog.create({
+      data: {
+        userId: safeAuthorId,
+        actionPerformed: `Deleted IT asset capture record (${record.scanType})`,
+        tableName: "ITAssetCapture",
+        recordId: id,
+        previousValue: JSON.stringify(record),
+        ipAddress: "127.0.0.1",
+        browserAgent: "Server Action Engine",
+      },
+    });
+
+    revalidatePath("/admin/asset-capture");
+    return { success: true };
+  } catch (e: any) {
+    console.error("deleteITAssetCapture error:", e);
+    return { success: false, error: e.message || "Failed to delete capture record." };
+  }
+}

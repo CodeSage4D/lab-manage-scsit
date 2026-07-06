@@ -365,3 +365,19 @@ model Settings {
   key   String @id
   value String
 }
+
+model ITAssetCapture {
+  id                  String   @id @default(uuid())
+  scanType            String   // "QR Code", "Barcode", "OCR"
+  scannedValue        String?
+  ocrText             String?
+  imagePath           String?
+  createdDate         DateTime @default(now())
+  createdBy           String
+  location            String   // LAB Name
+  remarks             String?
+  status              String   @default("Captured")
+  cpuSerialNumber     String?
+  monitorSerialNumber String?
+  barcodeSerialNumber String?
+}

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Plus, Search, Trash2, Edit2, RefreshCw, ArrowLeft, CheckCircle, AlertTriangle, Loader2, Check, X, Monitor, Wrench, CalendarDays } from "lucide-react";
+import { Building2, Plus, Search, Trash2, Edit2, RefreshCw, ArrowLeft, CheckCircle, AlertTriangle, Loader2, Check, X, Monitor, Wrench, CalendarDays, Camera } from "lucide-react";
 import { getLaboratories, saveLaboratory, deleteLaboratory } from "../../actions";
 
 interface Lab { id:string;name:string;code:string;building:string;floor:string;location:string;seatingCapacity:number;totalComputers:number;operatingSystem:string;primaryPurpose:string;status:string;operatingHours:string;switchesCount:number;internetSpeed:string;computers?:any[];maintenanceLogs?:any[];bookings?:any[]; }
@@ -152,6 +152,12 @@ export default function LabsRegister() {
                 <button onClick={()=>router.push(`/admin/maintenance?lab=${selectedLab.id}`)} className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs font-medium text-zinc-200 transition flex items-center justify-center gap-1"><Wrench size={13}/>Maintenance</button>
                 <button onClick={()=>router.push(`/admin/bookings?lab=${selectedLab.id}`)} className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs font-medium text-zinc-200 transition flex items-center justify-center gap-1"><CalendarDays size={13}/>Bookings</button>
               </div>
+              <button 
+                onClick={()=>router.push(`/admin/asset-capture?lab=${encodeURIComponent(selectedLab.name)}`)} 
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 rounded-lg text-xs font-bold text-white transition flex items-center justify-center gap-1.5 mt-2"
+              >
+                <Camera size={13}/>Launch IT Asset Capture Scanner
+              </button>
             </div>
           </div>
         </div>
@@ -206,8 +212,9 @@ export default function LabsRegister() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-zinc-500">{lab.operatingHours}</p>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e=>e.stopPropagation()}>
-                    <button onClick={()=>{setEditingId(lab.id);setForm({...lab});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
-                    <button onClick={()=>handleDelete(lab.id,lab.name)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition"><Trash2 size={13}/></button>
+                    <button onClick={()=>router.push(`/admin/asset-capture?lab=${encodeURIComponent(lab.name)}`)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-cyan-400 transition" title="Scan & Capture IT Assets"><Camera size={13}/></button>
+                    <button onClick={()=>{setEditingId(lab.id);setForm({...lab});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition" title="Edit Lab"><Edit2 size={13}/></button>
+                    <button onClick={()=>handleDelete(lab.id,lab.name)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition" title="Delete Lab"><Trash2 size={13}/></button>
                   </div>
                 </div>
               </div>

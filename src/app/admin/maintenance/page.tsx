@@ -41,6 +41,17 @@ const EMPTY_FORM = {
   issueDescription:"", reasonForDamage:"", technicianName:"", status:"REPORTED",
 };
 
+const formatDate = (d: any, len = 10) => {
+  if (!d) return "";
+  try {
+    const dateObj = typeof d === "string" ? new Date(d) : d;
+    if (isNaN(dateObj.getTime())) return "";
+    return dateObj.toISOString().slice(0, len);
+  } catch (e) {
+    return "";
+  }
+};
+
 export default function MaintenanceRegister() {
   const router = useRouter();
   const [logs, setLogs] = useState<MaintenanceLog[]>([]);
@@ -139,7 +150,7 @@ export default function MaintenanceRegister() {
     const rows = filtered.map(l => [
       l.maintenanceId, l.lab?.name||"", l.computer?.computerId||"", l.pcNumber,
       l.issueDescription, l.technicianName, l.status,
-      l.reportedDate?.slice(0,10), l.completionDate?.slice(0,10)||"", l.remarks||""
+      formatDate(l.reportedDate), formatDate(l.completionDate)||"", l.remarks||""
     ]);
     exportToExcel(rows, headers, "Maintenance Register", "SCSIT_Maintenance_Logs");
     showToast("Excel sheet exported successfully.");
@@ -340,7 +351,7 @@ export default function MaintenanceRegister() {
                           {STATUS_META[l.status]?.label||l.status}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-zinc-500 text-xs">{l.reportedDate?.slice(0,10)}</td>
+                      <td className="px-3 py-3 text-zinc-500 text-xs">{formatDate(l.reportedDate)}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {STATUS_META[l.status]?.next && (

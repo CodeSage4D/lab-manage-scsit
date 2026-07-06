@@ -10,6 +10,17 @@ interface Software { id:string;name:string;category:string;latestVersion:string;
 const EMPTY_FORM = { name:"",category:"",latestVersion:"",licenseDetails:"",licenseExpiry:"",compatibility:"Windows 11",installationGuide:"" };
 const EMPTY_DEPLOY = { computerId:"",softwareId:"",installedVersion:"",installedBy:"",installedDate:"" };
 
+const formatDate = (d: any, len = 10) => {
+  if (!d) return "";
+  try {
+    const dateObj = typeof d === "string" ? new Date(d) : d;
+    if (isNaN(dateObj.getTime())) return "";
+    return dateObj.toISOString().slice(0, len);
+  } catch (e) {
+    return "";
+  }
+};
+
 export default function SoftwareCatalog() {
   const router = useRouter();
   const [software, setSoftware] = useState<Software[]>([]);
@@ -248,12 +259,12 @@ export default function SoftwareCatalog() {
                         <td className="px-3 py-3 text-zinc-400 text-xs">{s.compatibility}</td>
                         <td className="px-3 py-3 text-zinc-400 text-xs max-w-[130px] truncate">{s.licenseDetails}</td>
                         <td className="px-3 py-3 text-xs">
-                          {s.licenseExpiry?<span className={isExpired(s.licenseExpiry)?"text-red-400 font-semibold":"text-zinc-400"}>{s.licenseExpiry?.slice(0,10)}</span>:<span className="text-zinc-600">–</span>}
+                          {s.licenseExpiry?<span className={isExpired(s.licenseExpiry)?"text-red-400 font-semibold":"text-zinc-400"}>{formatDate(s.licenseExpiry)}</span>:<span className="text-zinc-600">–</span>}
                         </td>
                         <td className="px-3 py-3 text-zinc-300 text-xs font-bold">{s.deployments?.length||0}</td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={()=>{setEditingId(s.id);setForm({...s,licenseExpiry:s.licenseExpiry?.slice(0,10)||""});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
+                            <button onClick={()=>{setEditingId(s.id);setForm({...s,licenseExpiry:formatDate(s.licenseExpiry)});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
                             <button onClick={()=>handleDelete(s.id,s.name)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition"><Trash2 size={13}/></button>
                           </div>
                         </td>
@@ -280,7 +291,7 @@ export default function SoftwareCatalog() {
                         <td className="px-3 py-3 text-zinc-400 text-xs font-mono">{d.computer?.computerId||"–"}</td>
                         <td className="px-3 py-3 text-zinc-400 text-xs">{d.computer?.lab?.name||"–"}</td>
                         <td className="px-3 py-3 text-zinc-400 text-xs">{d.installedBy}</td>
-                        <td className="px-3 py-3 text-zinc-500 text-xs">{d.installedDate?.slice(0,10)}</td>
+                        <td className="px-3 py-3 text-zinc-500 text-xs">{formatDate(d.installedDate)}</td>
                         <td className="px-3 py-3"><span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[11px] font-semibold">{d.verificationStatus||"Verified"}</span></td>
                         <td className="px-3 py-3"><button onClick={()=>handleDeleteDeploy(d.id)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition"><Trash2 size={13}/></button></td>
                       </tr>

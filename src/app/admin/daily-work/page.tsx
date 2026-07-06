@@ -8,6 +8,17 @@ import { exportToExcel } from "../../../utils/exportHelper";
 interface WorkLog { id:string;userId:string;date:string;tasksPerformed:string;durationMinutes:number;labScope:string;evidenceUrl?:string;remarks?:string;user?:{name:string;employeeId:string}; }
 const EMPTY_FORM = { userId:"", date:new Date().toISOString().slice(0,10), tasksPerformed:"", durationMinutes:60, labScope:"", evidenceUrl:"", remarks:"" };
 
+const formatDate = (d: any, len = 10) => {
+  if (!d) return "";
+  try {
+    const dateObj = typeof d === "string" ? new Date(d) : d;
+    if (isNaN(dateObj.getTime())) return "";
+    return dateObj.toISOString().slice(0, len);
+  } catch (e) {
+    return "";
+  }
+};
+
 export default function DailyWorkRegister() {
   const router = useRouter();
   const [logs, setLogs] = useState<WorkLog[]>([]);
@@ -42,8 +53,8 @@ export default function DailyWorkRegister() {
     const q=search.trim().toLowerCase();
     if(q) list=list.filter(l=>l.tasksPerformed.toLowerCase().includes(q)||(l.user?.name||"").toLowerCase().includes(q)||l.labScope.toLowerCase().includes(q));
     if(filterUser) list=list.filter(l=>l.userId===filterUser);
-    if(filterFrom) list=list.filter(l=>l.date?.slice(0,10)>=filterFrom);
-    if(filterTo) list=list.filter(l=>l.date?.slice(0,10)<=filterTo);
+    if(filterFrom) list=list.filter(l=>formatDate(l.date)>=filterFrom);
+    if(filterTo) list=list.filter(l=>formatDate(l.date)<=filterTo);
     return list.sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime());
   },[logs,search,filterUser,filterFrom,filterTo]);
 
@@ -71,7 +82,7 @@ export default function DailyWorkRegister() {
   const exportExcel = () => {
     const headers = ["Staff Name","Date","Lab Scope","Tasks Performed","Duration (min)","Remarks"];
     const rows = filtered.map(l => [
-      l.user?.name||"", l.date?.slice(0,10), l.labScope, l.tasksPerformed, l.durationMinutes, l.remarks||""
+      l.user?.name||"", formatDate(l.date), l.labScope, l.tasksPerformed, l.durationMinutes, l.remarks||""
     ]);
     exportToExcel(rows, headers, "Daily Work Log", "SCSIT_Daily_Work_Register");
     showToast("Excel sheet exported successfully.");
@@ -197,7 +208,7 @@ export default function DailyWorkRegister() {
                 <tbody className="divide-y divide-zinc-800">
                   {paginated.map(l=>(
                     <tr key={l.id} className="hover:bg-zinc-800/40 transition-colors group">
-                      <td className="px-3 py-3 text-zinc-400 text-xs font-mono whitespace-nowrap">{l.date?.slice(0,10)}</td>
+                      <td className="px-3 py-3 text-zinc-400 text-xs font-mono whitespace-nowrap">{formatDate(l.date)}</td>
                       <td className="px-3 py-3 text-zinc-300 text-xs font-medium">{l.user?.name||"–"}</td>
                       <td className="px-3 py-3 text-zinc-400 text-xs">{l.labScope}</td>
                       <td className="px-3 py-3 max-w-[250px]"><p className="text-zinc-300 text-xs truncate" title={l.tasksPerformed}>{l.tasksPerformed}</p></td>
@@ -205,7 +216,7 @@ export default function DailyWorkRegister() {
                       <td className="px-3 py-3 text-zinc-500 text-xs max-w-[150px] truncate">{l.remarks||"–"}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={()=>{setEditingId(l.id);setForm({...l,date:l.date?.slice(0,10)||""});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
+                          <button onClick={()=>{setEditingId(l.id);setForm({...l,date:formatDate(l.date)});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
                           <button onClick={()=>handleDelete(l.id)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition"><Trash2 size={13}/></button>
                         </div>
                       </td>

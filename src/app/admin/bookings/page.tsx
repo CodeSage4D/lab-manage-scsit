@@ -15,6 +15,17 @@ interface Booking {
 
 const EMPTY_FORM = {labId:"",userId:"",facultyName:"",timeSlot:"",bookingDate:"",subjectName:"",semester:"",studentCount:30,approvalStatus:"Approved"};
 
+const formatDate = (d: any, len = 10) => {
+  if (!d) return "";
+  try {
+    const dateObj = typeof d === "string" ? new Date(d) : d;
+    if (isNaN(dateObj.getTime())) return "";
+    return dateObj.toISOString().slice(0, len);
+  } catch (e) {
+    return "";
+  }
+};
+
 export default function LabBookings() {
   const router = useRouter();
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -51,14 +62,14 @@ export default function LabBookings() {
     const q = search.trim().toLowerCase();
     if (q) list = list.filter(b => b.facultyName.toLowerCase().includes(q)||b.subjectName.toLowerCase().includes(q)||(b.lab?.name||"").toLowerCase().includes(q)||b.semester.toLowerCase().includes(q));
     if (filterLab) list = list.filter(b=>b.labId===filterLab);
-    if (filterDate) list = list.filter(b=>b.bookingDate?.slice(0,10)===filterDate);
+    if (filterDate) list = list.filter(b=>formatDate(b.bookingDate)===filterDate);
     return list.sort((a,b) => new Date(b.bookingDate).getTime()-new Date(a.bookingDate).getTime());
   }, [bookings, search, filterLab, filterDate]);
 
   const paginated = useMemo(()=>filtered.slice((page-1)*PAGE,page*PAGE),[filtered,page]);
   const totalPages = Math.max(1,Math.ceil(filtered.length/PAGE));
 
-  const todayBookings = useMemo(()=>bookings.filter(b=>b.bookingDate?.slice(0,10)===new Date().toISOString().slice(0,10)),[bookings]);
+  const todayBookings = useMemo(()=>bookings.filter(b=>formatDate(b.bookingDate)===formatDate(new Date())),[bookings]);
 
   const handleSave = async () => {
     if(!form.labId||!form.facultyName||!form.timeSlot||!form.bookingDate||!form.subjectName) { showToast("Fill all required fields.","error"); return; }
@@ -80,7 +91,7 @@ export default function LabBookings() {
   const exportExcel = () => {
     const headers = ["Lab","Faculty","Subject","Semester","Time Slot","Date","Students","Status"];
     const rows = filtered.map(b => [
-      b.lab?.name||"", b.facultyName, b.subjectName, b.semester, b.timeSlot, b.bookingDate?.slice(0,10), b.studentCount, b.approvalStatus
+      b.lab?.name||"", b.facultyName, b.subjectName, b.semester, b.timeSlot, formatDate(b.bookingDate), b.studentCount, b.approvalStatus
     ]);
     exportToExcel(rows, headers, "Lab Bookings", "SCSIT_Lab_Bookings");
     showToast("Excel sheet exported successfully.");
@@ -88,7 +99,7 @@ export default function LabBookings() {
 
   // Calendar view: group by lab and time slot for a given date
   const calendarData = useMemo(() => {
-    const dateBookings = bookings.filter(b=>b.bookingDate?.slice(0,10)===(filterDate||new Date().toISOString().slice(0,10)));
+    const dateBookings = bookings.filter(b=>formatDate(b.bookingDate)===(filterDate||formatDate(new Date())));
     const grid: Record<string,Record<string,Booking|null>> = {};
     labs.forEach(l => { grid[l.id]={}; TIME_SLOTS.forEach(t=>{grid[l.id][t]=null;}); });
     dateBookings.forEach(b => { if(grid[b.labId]) grid[b.labId][b.timeSlot]=b; });
@@ -238,7 +249,7 @@ export default function LabBookings() {
                       <tr key={b.id} className="hover:bg-zinc-800/40 transition-colors group">
                         <td className="px-3 py-3 text-zinc-300 text-xs font-semibold">{b.lab?.name||"–"}</td>
                         <td className="px-3 py-3"><span className="font-mono text-emerald-400 text-xs">{b.timeSlot}</span></td>
-                        <td className="px-3 py-3 text-zinc-400 text-xs">{b.bookingDate?.slice(0,10)}</td>
+                        <td className="px-3 py-3 text-zinc-400 text-xs">{formatDate(b.bookingDate)}</td>
                         <td className="px-3 py-3 text-zinc-300 text-xs">{b.facultyName}</td>
                         <td className="px-3 py-3 text-zinc-400 text-xs max-w-[150px] truncate">{b.subjectName}</td>
                         <td className="px-3 py-3 text-zinc-400 text-xs">{b.semester}</td>
@@ -246,7 +257,7 @@ export default function LabBookings() {
                         <td className="px-3 py-3"><span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[11px] font-semibold">{b.approvalStatus}</span></td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={()=>{setEditingId(b.id);setForm({...b,bookingDate:b.bookingDate?.slice(0,10)});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
+                            <button onClick={()=>{setEditingId(b.id);setForm({...b,bookingDate:formatDate(b.bookingDate)});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
                             <button onClick={()=>handleDelete(b.id)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition"><Trash2 size={13}/></button>
                           </div>
                         </td>

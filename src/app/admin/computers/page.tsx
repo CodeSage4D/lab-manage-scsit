@@ -145,6 +145,17 @@ function QrDisplay({ computerId, qrCode }: { computerId: string; qrCode?: string
   );
 }
 
+const formatDate = (dateInput: any) => {
+  if (!dateInput) return "";
+  try {
+    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+    if (isNaN(d.getTime())) return "";
+    return d.toISOString().slice(0, 10);
+  } catch (e) {
+    return "";
+  }
+};
+
 /* ─── Main Page ──────────────────────────────────────────────────────────────── */
 export default function ComputerRegistry() {
   const router = useRouter();
@@ -519,10 +530,10 @@ export default function ComputerRegistry() {
     setEditingId(c.id);
     setForm({
       ...c,
-      purchaseDate: c.purchaseDate ? c.purchaseDate.slice(0, 10) : "",
-      warrantyExpiry: c.warrantyExpiry ? c.warrantyExpiry.slice(0, 10) : "",
-      lastServiceDate: c.lastServiceDate ? c.lastServiceDate.slice(0, 10) : "",
-      nextServiceDate: c.nextServiceDate ? c.nextServiceDate.slice(0, 10) : "",
+      purchaseDate: formatDate(c.purchaseDate),
+      warrantyExpiry: formatDate(c.warrantyExpiry),
+      lastServiceDate: formatDate(c.lastServiceDate),
+      nextServiceDate: formatDate(c.nextServiceDate),
     });
     setShowForm(true);
   };
@@ -572,7 +583,7 @@ export default function ComputerRegistry() {
       c.computerId, c.hostname, c.lab?.name || c.labId, c.benchNumber,
       c.ipAddress, c.macAddress, c.cpu, c.ramGb, c.ssdGb, c.hddGb,
       c.operatingSystem, c.status, c.condition, c.vendorDetails,
-      c.purchaseDate?.slice(0,10), c.warrantyExpiry?.slice(0,10), c.remarks || ""
+      formatDate(c.purchaseDate), formatDate(c.warrantyExpiry), c.remarks || ""
     ]);
     exportToExcel(rows, headers, "Computers Register", "SCSIT_Computer_Registry");
     showToast("Excel sheet exported successfully.");
@@ -906,11 +917,11 @@ export default function ComputerRegistry() {
               <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-widest mb-3">Purchase & Warranty</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <InfoCard label="Vendor" value={c.vendorDetails} />
-                <InfoCard label="Purchase Date" value={c.purchaseDate?.slice(0,10) || "–"} />
-                <InfoCard label="Warranty Expiry" value={c.warrantyExpiry?.slice(0,10) || "–"} highlight={new Date(c.warrantyExpiry) < new Date()} />
+                <InfoCard label="Purchase Date" value={formatDate(c.purchaseDate) || "–"} />
+                <InfoCard label="Warranty Expiry" value={formatDate(c.warrantyExpiry) || "–"} highlight={new Date(c.warrantyExpiry) < new Date()} />
                 <InfoCard label="Invoice" value={c.invoiceUrl ? "Attached" : "Not attached"} />
-                <InfoCard label="Last Serviced" value={c.lastServiceDate?.slice(0,10) || "–"} />
-                <InfoCard label="Next Service" value={c.nextServiceDate?.slice(0,10) || "–"} />
+                <InfoCard label="Last Serviced" value={formatDate(c.lastServiceDate) || "–"} />
+                <InfoCard label="Next Service" value={formatDate(c.nextServiceDate) || "–"} />
               </div>
             </div>
 
@@ -1601,7 +1612,7 @@ export default function ComputerRegistry() {
                         <td className="px-3 py-3"><ConditionBadge cond={c.condition} /></td>
                         <td className="px-3 py-3">
                           <span className={`text-xs font-mono ${warrantyExpired ? "text-red-400" : "text-zinc-400"}`}>
-                            {c.warrantyExpiry?.slice(0, 10)}
+                            {formatDate(c.warrantyExpiry)}
                             {warrantyExpired && " ⚠"}
                           </span>
                         </td>

@@ -27,6 +27,17 @@ const STATUS_COLOR: Record<string,string> = {
   DEPLETED:  "bg-red-500/15 text-red-400 border-red-500/30",
 };
 
+const formatDate = (d: any, len = 10) => {
+  if (!d) return "";
+  try {
+    const dateObj = typeof d === "string" ? new Date(d) : d;
+    if (isNaN(dateObj.getTime())) return "";
+    return dateObj.toISOString().slice(0, len);
+  } catch (e) {
+    return "";
+  }
+};
+
 export default function InventoryRegister() {
   const router = useRouter();
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -92,7 +103,7 @@ export default function InventoryRegister() {
   const exportExcel = () => {
     const headers = ["Asset No","Device Type","Lab","Vendor","Status","Stock","Purchase Date","Warranty"];
     const rows = filtered.map(i => [
-      i.assetNumber, i.deviceType, i.lab?.name||"", i.vendorDetails||"", i.status, i.stockCount, i.purchaseDate?.slice(0,10), i.warrantyDetails||""
+      i.assetNumber, i.deviceType, i.lab?.name||"", i.vendorDetails||"", i.status, i.stockCount, formatDate(i.purchaseDate), i.warrantyDetails||""
     ]);
     exportToExcel(rows, headers, "Hardware Inventory", "SCSIT_Hardware_Inventory");
     showToast("Excel sheet exported successfully.");
@@ -267,7 +278,7 @@ export default function InventoryRegister() {
                       <td className="px-3 py-3 text-zinc-500 text-xs max-w-[120px] truncate">{i.warrantyDetails||"–"}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={()=>{setEditingId(i.id);setForm({...i,purchaseDate:i.purchaseDate?.slice(0,10)||""});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
+                          <button onClick={()=>{setEditingId(i.id);setForm({...i,purchaseDate:formatDate(i.purchaseDate)});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
                           <button onClick={()=>handleDelete(i.id,i.assetNumber)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition"><Trash2 size={13}/></button>
                         </div>
                       </td>

@@ -8,6 +8,20 @@ import { exportToExcel } from "../../../utils/exportHelper";
 interface Visitor { id:string;visitorName:string;purpose:string;entryTime:string;exitTime?:string;approvedBy:string; }
 const EMPTY_FORM = { visitorName:"", purpose:"", approvedBy:"", entryTime:"", exitTime:"" };
 
+const formatDate = (d: any, len = 10) => {
+  if (!d) return "";
+  try {
+    const dateObj = typeof d === "string" ? new Date(d) : d;
+    if (isNaN(dateObj.getTime())) return "";
+    // convert date to ISO string adjusting for local timezone offset to avoid date off-by-one errors
+    const offset = dateObj.getTimezoneOffset();
+    const localTime = new Date(dateObj.getTime() - (offset * 60 * 1000));
+    return localTime.toISOString().slice(0, len).replace('T', ' ');
+  } catch (e) {
+    return "";
+  }
+};
+
 export default function VisitorRegister() {
   const router = useRouter();
   const [visitors, setVisitors] = useState<Visitor[]>([]);
@@ -37,13 +51,13 @@ export default function VisitorRegister() {
     let list = [...visitors];
     const q = search.trim().toLowerCase();
     if(q) list = list.filter(v=>v.visitorName.toLowerCase().includes(q)||v.purpose.toLowerCase().includes(q)||v.approvedBy.toLowerCase().includes(q));
-    if(filterDate) list = list.filter(v=>v.entryTime?.slice(0,10)===filterDate);
+    if(filterDate) list = list.filter(v=>formatDate(v.entryTime, 10)===filterDate);
     return list.sort((a,b)=>new Date(b.entryTime).getTime()-new Date(a.entryTime).getTime());
   },[visitors,search,filterDate]);
 
   const paginated = useMemo(()=>filtered.slice((page-1)*PAGE,page*PAGE),[filtered,page]);
   const totalPages = Math.max(1,Math.ceil(filtered.length/PAGE));
-  const todayCount = useMemo(()=>visitors.filter(v=>v.entryTime?.slice(0,10)===new Date().toISOString().slice(0,10)).length,[visitors]);
+  const todayCount = useMemo(()=>visitors.filter(v=>formatDate(v.entryTime, 10)===formatDate(new Date(), 10)).length,[visitors]);
   const activeCount = useMemo(()=>visitors.filter(v=>!v.exitTime).length,[visitors]);
 
   const handleSave = async () => {
@@ -181,8 +195,8 @@ export default function VisitorRegister() {
                         <td className="px-3 py-3 text-zinc-200 font-medium text-sm">{v.visitorName}</td>
                         <td className="px-3 py-3 text-zinc-400 text-xs max-w-[180px] truncate">{v.purpose}</td>
                         <td className="px-3 py-3 text-zinc-400 text-xs">{v.approvedBy}</td>
-                        <td className="px-3 py-3 text-zinc-400 text-xs font-mono">{v.entryTime?.slice(0,16)}</td>
-                        <td className="px-3 py-3 text-zinc-400 text-xs font-mono">{v.exitTime?.slice(0,16)||"–"}</td>
+                        <td className="px-3 py-3 text-zinc-400 text-xs font-mono">{formatDate(v.entryTime, 16)}</td>
+                        <td className="px-3 py-3 text-zinc-400 text-xs font-mono">{formatDate(v.exitTime, 16)||"–"}</td>
                         <td className="px-3 py-3 text-zinc-400 text-xs">{dur}</td>
                         <td className="px-3 py-3">
                           {inside?<span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full text-[11px] font-semibold">Inside</span>
@@ -191,7 +205,7 @@ export default function VisitorRegister() {
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {inside&&<button onClick={()=>handleExit(v.id,v.visitorName)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-amber-400 transition" title="Mark Exit"><LogOut size={13}/></button>}
-                            <button onClick={()=>{setEditingId(v.id);setForm({...v,entryTime:v.entryTime?.slice(0,16)||"",exitTime:v.exitTime?.slice(0,16)||""});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
+                            <button onClick={()=>{setEditingId(v.id);setForm({...v,entryTime:formatDate(v.entryTime, 16).replace(' ', 'T'),exitTime:formatDate(v.exitTime, 16).replace(' ', 'T')});setShowForm(true);}} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-blue-300 transition"><Edit2 size={13}/></button>
                             <button onClick={()=>handleDelete(v.id)} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition"><Trash2 size={13}/></button>
                           </div>
                         </td>

@@ -9,7 +9,7 @@ import {
   ChevronUp, Sun, Moon, ShieldCheck, LogOut, ShieldAlert,
   KeyRound, Filter, X, FileSpreadsheet, FileText, CheckCircle2,
   Edit, Plus, ToggleLeft, ToggleRight, Phone, Mail, Image as ImageIcon, Check, Sparkles, Save,
-  Lock, Unlock, Bell, Activity, Layers, FileCode, History, Settings, Monitor, ClipboardList, Users
+  Lock, Unlock, Bell, Activity, Layers, FileCode, History, Settings, Monitor, ClipboardList, Users, Camera
 } from "lucide-react";
 import LmsPanels from "../../components/LmsPanels";
 import {
@@ -325,7 +325,8 @@ export default function AdminDashboard() {
       "naac_documentation",
       "ieee_compliance",
       "document_repository",
-      "search_audit_logs"
+      "search_audit_logs",
+      "asset_capture"
     ];
     lmsModules.forEach(mod => {
       const key = `module_${mod}`;
@@ -334,7 +335,8 @@ export default function AdminDashboard() {
         "laboratory_management",
         "laboratory_software_records",
         "maintenance_register",
-        "reports_dashboard"
+        "reports_dashboard",
+        "asset_capture"
       ].includes(mod);
       status[mod] = settings[key] !== undefined ? settings[key] === "true" : isEnabledByDefault;
     });
@@ -356,7 +358,8 @@ export default function AdminDashboard() {
         "ieee_compliance",
         "document_repository",
         "notifications",
-        "search_audit_logs"
+        "search_audit_logs",
+        "asset_capture"
       ];
       const firstEnabled = lmsModules.find(m => modulesStatus[m]);
       if (firstEnabled) {
@@ -1706,6 +1709,7 @@ export default function AdminDashboard() {
                   { id: "visitor_register", name: "Visitor Register", icon: <User size={14} />, path: "/admin/visitors" },
                   { id: "daily_work_register", name: "Daily Work Register", icon: <ClipboardList size={14} />, path: "/admin/daily-work" },
                   { id: "staff_workspace", name: "Staff Profile Workspace", icon: <Users size={14} />, path: "/admin/staff" },
+                  { id: "asset_capture", name: "IT Asset Capture", icon: <Camera size={14} />, path: "/admin/asset-capture" },
                   { id: "naac_documentation", name: "NAAC Documentation", icon: <ShieldCheck size={14} /> },
                   { id: "ieee_compliance", name: "IEEE Guidelines", icon: <FileText size={14} /> },
                   { id: "document_repository", name: "Doc Repository", icon: <FileText size={14} /> },
@@ -1809,7 +1813,8 @@ export default function AdminDashboard() {
                       { id: "ieee_compliance", name: "Module 8: IEEE Guidelines", desc: "Guidelines record database, safety inspection logs, SOP document templates.", phase: 3 },
                       { id: "document_repository", name: "Module 10: Document Repository Archive", desc: "Categorized central download vault for invoices, licenses, and contracts.", phase: 3 },
                       { id: "notifications", name: "Module 11: Warnings Alert Center", desc: "AMC expiry indicators, software demand warnings, maintenance alerts.", phase: 2 },
-                      { id: "search_audit_logs", name: "Module 12: Search & Audit timelines", desc: "Advanced cross-module quick queries search, operator action timeline.", phase: 3 }
+                      { id: "search_audit_logs", name: "Module 12: Search & Audit timelines", desc: "Advanced cross-module quick queries search, operator action timeline.", phase: 3 },
+                      { id: "asset_capture", name: "Module 13: IT Asset Scanner", desc: "Capture CPU barcodes, monitor QR codes, and run text OCR scanner on device camera.", phase: 2 }
                     ].map(mod => {
                       const isEnabled = modulesStatus[mod.id];
                       return (

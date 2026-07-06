@@ -339,7 +339,7 @@ export default function StaffManagement() {
                         <div key={wl.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 flex justify-between items-start gap-4">
                           <div>
                             <p className="text-xs text-zinc-300 font-medium leading-relaxed">{wl.tasksPerformed}</p>
-                            <p className="text-[10px] text-zinc-500 font-mono mt-1">{wl.labScope} · {wl.date?.slice(0, 10)}</p>
+                            <p className="text-[10px] text-zinc-500 font-mono mt-1">{wl.labScope} · {wl.date ? new Date(wl.date).toISOString().slice(0, 10) : ""}</p>
                           </div>
                           <span className="text-[10px] text-violet-400 font-mono shrink-0">{wl.durationMinutes}m</span>
                         </div>
